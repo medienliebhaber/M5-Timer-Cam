@@ -129,3 +129,15 @@ esp_err_t bm8563_set_wake_alarm(int minutes_from_now)
     esp_deep_sleep_start();
     return ESP_OK; /* never reached while the ESP32 remains powered */
 }
+
+esp_err_t bm8563_power_off(void)
+{
+    esp_err_t err = bm8563_write_reg(BM8563_REG_TIMER_CTRL, 0);
+    if (err != ESP_OK) return err;
+
+    err = gpio_set_level(BAT_HOLD_PIN, 0);
+    if (err != ESP_OK) return err;
+
+    esp_deep_sleep_start();
+    return ESP_OK; /* never reached while the ESP32 remains powered */
+}

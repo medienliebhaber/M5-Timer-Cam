@@ -1,4 +1,5 @@
 #include "http_server.h"
+#include "bm8563.h"
 #include "camera.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
@@ -379,6 +380,29 @@ static const httpd_uri_t OTA_URI = {
     .user_ctx = NULL,
 };
 
+/* ── POST /power-off ──────────────────────────────────────────────────── */
+static esp_err_t power_off_post_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t err = httpd_resp_sendstr(req, "{\"status\":\"powering_off\"}");
+    if (err != ESP_OK) return err;
+
+    vTaskDelay(pdMS_TO_TICKS(300));
+    err = bm8563_power_off();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "power off failed: %s", esp_err_to_name(err));
+        return err;
+    }
+    return ESP_OK;
+}
+
+static const httpd_uri_t POWER_OFF_URI = {
+    .uri      = "/power-off",
+    .method   = HTTP_POST,
+    .handler  = power_off_post_handler,
+    .user_ctx = NULL,
+};
+
 /* ── Server lifecycle ──────────────────────────────────────────────────── */
 esp_err_t http_server_start(void)
 {
@@ -402,7 +426,8 @@ esp_err_t http_server_start(void)
     httpd_register_uri_handler(s_server, &CONFIG_POST_URI);
     httpd_register_uri_handler(s_server, &PREVIEW_URI);
     httpd_register_uri_handler(s_server, &OTA_URI);
-    ESP_LOGI(TAG, "started on port 80 (/snapshot /status /config /preview /ota)");
+    httpd_register_uri_handler(s_server, &POWER_OFF_URI);
+    ESP_LOGI(TAG, "started on port 80 (/snapshot /status /config /preview /ota /power-off)");
     return ESP_OK;
 }
 
