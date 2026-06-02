@@ -440,13 +440,16 @@ updatePbButtons();
 
 /* ── Settings modal ────────────────────────────────────────────────────── */
 const settingsModal = document.getElementById('settings-modal');
+let settingsSession = 0;
+let powerOffPending = false;
 
 document.getElementById('btn-settings').addEventListener('click', openSettings);
 document.getElementById('btn-settings-close').addEventListener('click', closeSettings);
 document.querySelector('.modal-backdrop').addEventListener('click', closeSettings);
 
 function openSettings() {
-  document.getElementById('btn-power-off').disabled = false;
+  settingsSession += 1;
+  document.getElementById('btn-power-off').disabled = powerOffPending;
   settingsModal.classList.remove('hidden');
   loadHwStatus();
   loadStorageStats();
@@ -640,16 +643,22 @@ document.getElementById('btn-save-config').addEventListener('click', async () =>
 
 /* ── Device power ─────────────────────────────────────────────────────── */
 document.getElementById('btn-power-off').addEventListener('click', async () => {
+  if (powerOffPending) return;
   if (!confirm('Turn off scheduled captures until USB is reconnected or the hardware wake/reset button is pressed?')) return;
   const btn = document.getElementById('btn-power-off');
+  const session = settingsSession;
+  powerOffPending = true;
   btn.disabled = true;
   try {
     const r = await fetch('/api/camera/power-off', { method: 'POST' });
     if (!r.ok) throw new Error(`server error ${r.status}`);
-    settingsModal.classList.add('hidden');
+    powerOffPending = false;
+    if (settingsSession === session) settingsModal.classList.add('hidden');
+    else btn.disabled = false;
     showToast('Device turned off — reconnect USB or press the hardware wake/reset button to resume scheduled captures', 'success');
   } catch (err) {
     showToast(`Power off failed: ${err.message}`, 'error');
+    powerOffPending = false;
     btn.disabled = false;
   }
 });
