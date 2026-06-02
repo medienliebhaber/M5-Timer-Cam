@@ -7,6 +7,7 @@ esp_err_t bm8563_init(void);
 /* Read current time from BM8563. */
 esp_err_t bm8563_get_time(struct tm *t);
 
-/* Set a deep-sleep wake alarm N minutes from now, then enter deep sleep.
- * Releases Battery Hold (GPIO33 LOW) before sleeping. */
+/* Program BM8563 and ESP32 wake timers N minutes from now, then release Battery
+ * Hold (GPIO33 LOW). BM8563 powers the board back on after a battery sleep;
+ * ESP32 deep sleep covers the USB-powered case. */
 esp_err_t bm8563_set_wake_alarm(int minutes_from_now);

@@ -13,11 +13,12 @@ When test mode is disabled and runtime sleep is enabled:
 2. Capture a JPEG and post it to the server.
 3. Apply runtime configuration returned in `X-Config-*` response headers.
 4. Start the camera HTTP server for five seconds.
-5. Configure the ESP32 timer wakeup.
+5. Configure the BM8563 countdown timer and the ESP32 USB-power fallback timer.
 6. Release battery hold on GPIO33 and enter deep sleep.
 
-The BM8563 retains wall-clock time for capture timestamps. Timed wakeup is
-configured through the ESP32 deep-sleep timer.
+The BM8563 retains wall-clock time for capture timestamps. Its timer interrupt
+powers the board back on after the configured interval when battery-powered.
+The ESP32 deep-sleep timer wakes the board when USB power remains connected.
 
 ## Awake Mode
 

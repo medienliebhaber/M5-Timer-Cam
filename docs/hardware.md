@@ -54,8 +54,11 @@ M5Stack Timer Camera X board details used by the firmware.
 | Low-power current | Approximately 2 uA |
 
 The firmware drives battery hold on GPIO33 high during startup. Before timed
-sleep it configures the ESP32 timer wakeup and releases GPIO33 low. The BM8563
-retains wall-clock time so captured images can be timestamped after wake.
+sleep it configures the BM8563 countdown timer and releases GPIO33 low. The
+BM8563 timer interrupt powers the board back on after the configured interval.
+The BM8563 also retains wall-clock time so captured images can be timestamped
+after wake. The ESP32 deep-sleep timer is also armed as a fallback when USB
+power keeps the ESP32 running after GPIO33 is released.
 
 When battery voltage exceeds 4.1 V, the firmware assumes USB charging and stays
 awake.

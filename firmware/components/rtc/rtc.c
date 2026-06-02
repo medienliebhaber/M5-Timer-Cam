@@ -8,8 +8,16 @@
 static const char *TAG = "rtc";
 
 /* BM8563 I2C address and register map */
-#define BM8563_ADDR     0x51
-#define BM8563_REG_SEC  0x02
+#define BM8563_ADDR              0x51
+#define BM8563_REG_CTRL_STATUS2  0x01
+#define BM8563_REG_SEC           0x02
+#define BM8563_REG_TIMER_CTRL    0x0E
+#define BM8563_REG_TIMER         0x0F
+
+#define BM8563_CTRL_STATUS2_TIMER_INT_ENABLE  0x01
+#define BM8563_TIMER_CTRL_ENABLE              0x80
+#define BM8563_TIMER_CTRL_1HZ                 0x02
+#define BM8563_TIMER_CTRL_1_60HZ              0x03
 
 #define RTC_SCL_PIN     14
 #define RTC_SDA_PIN     12
@@ -18,7 +26,19 @@ static const char *TAG = "rtc";
 #define BAT_HOLD_PIN    33
 
 static uint8_t bcd2dec(uint8_t b) { return (b >> 4) * 10 + (b & 0x0F); }
-static uint8_t dec2bcd(uint8_t d) { return ((d / 10) << 4) | (d % 10); }
+
+static esp_err_t bm8563_write_reg(uint8_t reg, uint8_t value)
+{
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (BM8563_ADDR << 1) | I2C_MASTER_WRITE, true);
+    i2c_master_write_byte(cmd, reg, true);
+    i2c_master_write_byte(cmd, value, true);
+    i2c_master_stop(cmd);
+    esp_err_t err = i2c_master_cmd_begin(RTC_I2C_PORT, cmd, pdMS_TO_TICKS(100));
+    i2c_cmd_link_delete(cmd);
+    return err;
+}
 
 esp_err_t bm8563_init(void)
 {
@@ -77,17 +97,35 @@ esp_err_t bm8563_get_time(struct tm *t)
 
 esp_err_t bm8563_set_wake_alarm(int minutes_from_now)
 {
-    /* Use ESP32 internal timer for deep sleep (simpler than BM8563 alarm wiring).
-     * The BM8563 keeps time during sleep; on wake we read it for timestamps. */
-    uint64_t sleep_us = (uint64_t)minutes_from_now * 60ULL * 1000000ULL;
-    ESP_LOGI(TAG, "sleeping for %d min (%llu us)", minutes_from_now, sleep_us);
+    if (minutes_from_now < 1 || minutes_from_now > 255) {
+        return ESP_ERR_INVALID_ARG;
+    }
 
-    esp_sleep_enable_timer_wakeup(sleep_us);
+    ESP_LOGI(TAG, "powering off for %d min using BM8563 timer", minutes_from_now);
 
-    /* Release battery hold → allows RTC to cut power to ESP32 on the board's
-     * power circuit, achieving the ~2µA sleep current. */
-    gpio_set_level(BAT_HOLD_PIN, 0);
+    uint8_t timer_ctrl = BM8563_TIMER_CTRL_ENABLE | BM8563_TIMER_CTRL_1_60HZ;
+    uint8_t timer_value = (uint8_t)minutes_from_now;
+    if (minutes_from_now <= 4) {
+        timer_ctrl = BM8563_TIMER_CTRL_ENABLE | BM8563_TIMER_CTRL_1HZ;
+        timer_value = (uint8_t)(minutes_from_now * 60);
+    }
+
+    esp_err_t err = bm8563_write_reg(BM8563_REG_TIMER_CTRL, 0);
+    if (err != ESP_OK) return err;
+    err = bm8563_write_reg(BM8563_REG_CTRL_STATUS2,
+                           BM8563_CTRL_STATUS2_TIMER_INT_ENABLE);
+    if (err != ESP_OK) return err;
+    err = bm8563_write_reg(BM8563_REG_TIMER, timer_value);
+    if (err != ESP_OK) return err;
+    err = bm8563_write_reg(BM8563_REG_TIMER_CTRL, timer_ctrl);
+    if (err != ESP_OK) return err;
+
+    /* The BM8563 interrupt powers the board back on when battery-powered.
+     * The ESP32 timer wakes a board that remains powered over USB. */
+    esp_sleep_enable_timer_wakeup((uint64_t)minutes_from_now * 60ULL * 1000000ULL);
+    err = gpio_set_level(BAT_HOLD_PIN, 0);
+    if (err != ESP_OK) return err;
 
     esp_deep_sleep_start();
-    return ESP_OK; /* never reached */
+    return ESP_OK; /* never reached while the ESP32 remains powered */
 }

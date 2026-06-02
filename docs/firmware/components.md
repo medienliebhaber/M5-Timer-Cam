@@ -8,7 +8,7 @@ Each component lives under `firmware/components/`.
 | `wifi` | Connect to WiFi in station mode with retries |
 | `http_client` | Upload JPEG frames and apply server configuration headers |
 | `http_server` | Serve snapshot, status, runtime config, and OTA endpoints |
-| `rtc` | Read BM8563 time, configure timed sleep, and release battery hold |
+| `rtc` | Read BM8563 time, configure its wake timer, and release battery hold |
 | `led` | Emit named status blink patterns |
 
 ## Main Application

@@ -138,7 +138,13 @@ void app_main(void)
 sleep:
     ESP_LOGI(TAG, "entering deep sleep for %d minutes", cam_config_get_interval());
     led_blink(LED_SLEEPING);
-    bm8563_set_wake_alarm(cam_config_get_interval());
+    esp_err_t err = bm8563_set_wake_alarm(cam_config_get_interval());
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "failed to arm RTC wake timer: %s", esp_err_to_name(err));
+        led_blink(LED_ERROR);
+        vTaskDelay(pdMS_TO_TICKS(60000));
+        esp_restart();
+    }
     /* Battery hold released inside bm8563_set_wake_alarm */
 #endif
 }
