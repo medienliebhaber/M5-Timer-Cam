@@ -132,6 +132,8 @@ esp_err_t bm8563_set_wake_alarm(int minutes_from_now)
 
 esp_err_t bm8563_power_off(void)
 {
+    ESP_LOGI(TAG, "powering off indefinitely");
+
     esp_err_t err = bm8563_write_reg(BM8563_REG_TIMER_CTRL, 0);
     if (err != ESP_OK) return err;
 
