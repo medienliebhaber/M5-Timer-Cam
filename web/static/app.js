@@ -247,6 +247,8 @@ document.addEventListener('keydown', e => {
 function showToast(message, type = 'info') {
   const t = document.createElement('div');
   t.className = `toast toast-${type}`;
+  t.setAttribute('role', 'status');
+  t.setAttribute('aria-live', 'polite');
   t.textContent = message;
   document.body.appendChild(t);
   requestAnimationFrame(() => { requestAnimationFrame(() => t.classList.add('visible')); });
@@ -444,6 +446,7 @@ document.getElementById('btn-settings-close').addEventListener('click', closeSet
 document.querySelector('.modal-backdrop').addEventListener('click', closeSettings);
 
 function openSettings() {
+  document.getElementById('btn-power-off').disabled = false;
   settingsModal.classList.remove('hidden');
   loadHwStatus();
   loadStorageStats();
@@ -643,7 +646,7 @@ document.getElementById('btn-power-off').addEventListener('click', async () => {
   try {
     const r = await fetch('/api/camera/power-off', { method: 'POST' });
     if (!r.ok) throw new Error(`server error ${r.status}`);
-    closeSettings();
+    settingsModal.classList.add('hidden');
     showToast('Device turned off — reconnect USB or press the hardware wake/reset button to resume scheduled captures', 'success');
   } catch (err) {
     showToast(`Power off failed: ${err.message}`, 'error');

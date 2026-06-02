@@ -833,9 +833,7 @@ input[type="range"]::-moz-range-thumb {
   max-width: calc(100vw - 2rem);
   text-align: center;
   pointer-events: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: break-word;
 }
 .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast-error   { border-color: rgba(239,68,68,.4);  background: rgba(239,68,68,.12);  color: #fca5a5; }
