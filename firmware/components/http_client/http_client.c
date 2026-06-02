@@ -1,5 +1,6 @@
 #include "http_client.h"
 #include "bm8563.h"
+#include "camera.h"
 #include "nvs.h"
 #include <stdio.h>
 #include <string.h>
@@ -41,6 +42,43 @@ static void apply_config_header(esp_http_client_handle_t client,
     nvs_close(h);
 }
 
+static void apply_image_config_headers(esp_http_client_handle_t client)
+{
+    camera_image_config_t config;
+    camera_image_config_load(&config);
+    char *val = NULL;
+
+    esp_http_client_get_header(client, "X-Config-Framesize", &val);
+    if (val && *val) strlcpy(config.framesize, val, sizeof(config.framesize));
+    val = NULL;
+    esp_http_client_get_header(client, "X-Config-Quality", &val);
+    if (val && *val) config.quality = atoi(val);
+    val = NULL;
+    esp_http_client_get_header(client, "X-Config-Brightness", &val);
+    if (val && *val) config.brightness = atoi(val);
+    val = NULL;
+    esp_http_client_get_header(client, "X-Config-Contrast", &val);
+    if (val && *val) config.contrast = atoi(val);
+    val = NULL;
+    esp_http_client_get_header(client, "X-Config-Saturation", &val);
+    if (val && *val) config.saturation = atoi(val);
+    val = NULL;
+    esp_http_client_get_header(client, "X-Config-Sharpness", &val);
+    if (val && *val) config.sharpness = atoi(val);
+    val = NULL;
+    esp_http_client_get_header(client, "X-Config-Hmirror", &val);
+    if (val && *val) config.hmirror = *val == '1';
+    val = NULL;
+    esp_http_client_get_header(client, "X-Config-Vflip", &val);
+    if (val && *val) config.vflip = *val == '1';
+
+    esp_err_t err = camera_image_config_apply(&config, true);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "ignoring invalid image config headers: %s",
+                 esp_err_to_name(err));
+    }
+}
+
 esp_err_t http_client_post_frame(const uint8_t *buf, size_t len,
                                   const char *trigger)
 {
@@ -73,6 +111,7 @@ esp_err_t http_client_post_frame(const uint8_t *buf, size_t len,
         if (status >= 200 && status < 300) {
             apply_config_header(client, "X-Config-Interval", NVS_KEY_INT);
             apply_config_header(client, "X-Config-Sleep",    NVS_KEY_SLP);
+            apply_image_config_headers(client);
         } else {
             err = ESP_FAIL;
         }

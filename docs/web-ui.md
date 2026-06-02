@@ -3,6 +3,8 @@
 The UI is served at `http://localhost:8000` (or whatever host the server runs on).
 No build step — plain HTML/CSS/JS, assets under `web/`.
 
+Backend endpoint contracts live in the [server HTTP API](server/http-api.md).
+
 ---
 
 ## Layout
@@ -22,8 +24,9 @@ Three tab buttons fixed to the bottom of the viewport: Live, Gallery, Playback.
 
 ### Live
 Polls `GET /api/snapshot` every second and displays the latest JPEG.
-When the camera is sleeping, falls back to the most recently stored frame.
-Timestamp overlay shows the local time the image was received.
+When the camera is sleeping, falls back to the most recently stored frame and
+shows an amber **Cached frame** badge with its stored capture timestamp.
+Fresh device snapshots show a green **Live** badge.
 
 ### Gallery
 Paginated grid of stored frames (30 per page), newest first.
@@ -83,10 +86,20 @@ Controls pulled from `GET /api/camera/config` (live if camera is online, server-
 |---------|-------------|
 | Capture interval slider | 1–60 minutes between frames |
 | Deep sleep toggle | Checked = sleep between captures; unchecked = stay awake continuously |
+| Preview image | Fresh JPEG captured by the real camera after image-control changes |
+| Resolution | VGA through QXGA |
+| JPEG quality | 0–63; lower values produce higher quality |
+| Brightness / contrast / saturation / sharpness | OV3660 image tuning sliders |
+| Horizontal mirror / vertical flip | Device-side orientation controls |
 
 **Save Config** POSTs to `POST /api/camera/config`.
 - If the camera is online the config is applied immediately.
-- If offline, it is stored server-side and delivered via the `X-Config-Interval` / `X-Config-Sleep` response headers the next time the camera posts a frame.
+- If offline, it is stored server-side and delivered via `X-Config-*` response headers the next time the camera posts a frame.
+
+Image changes are debounced and sent to `POST /api/camera/preview`. Preview
+changes alter the real OV3660 registers but are not durable until **Save
+Config**. Closing the modal without saving restores the last saved image
+settings when the camera is reachable.
 
 > **Sleep & USB:** When the deep sleep toggle is off, or when the camera detects USB charging (battery voltage > 4.1 V), it runs an awake loop — WiFi and HTTP server stay up, frames are captured at the configured interval without entering deep sleep.
 

@@ -32,20 +32,31 @@ let liveTimer     = null;
 
 function pollLive() {
   fetch(`/api/snapshot?t=${Date.now()}`)
-    .then(r => { if (!r.ok) throw new Error(); return r.blob(); })
-    .then(blob => {
+    .then(async r => {
+      if (!r.ok) throw new Error();
+      return {
+        blob: await r.blob(),
+        source: r.headers.get('X-Snapshot-Source') ?? 'live',
+        capturedAt: r.headers.get('X-Captured-At'),
+      };
+    })
+    .then(({ blob, source, capturedAt }) => {
       const prev = liveImg.src;
       liveImg.src = URL.createObjectURL(blob);
       if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
-      setOnline(true);
-      liveTs.textContent = new Date().toLocaleTimeString();
+      setSnapshotSource(source);
+      liveTs.textContent = source === 'cached' && capturedAt
+        ? `Cached · ${formatTs(capturedAt)}`
+        : new Date().toLocaleTimeString();
     })
-    .catch(() => setOnline(false));
+    .catch(() => setSnapshotSource('offline'));
 }
 
-function setOnline(online) {
-  statusBadge.className = `status ${online ? 'online' : 'offline'}`;
-  statusText.textContent = online ? 'Online' : 'Offline';
+function setSnapshotSource(source) {
+  statusBadge.className = `status ${source}`;
+  statusText.textContent = source === 'live' ? 'Live'
+    : source === 'cached' ? 'Cached frame'
+    : 'Offline';
 }
 
 function startLivePolling() {
@@ -396,6 +407,7 @@ function openSettings() {
   loadCameraConfig();
 }
 function closeSettings() {
+  restoreSavedPreview();
   settingsModal.classList.add('hidden');
 }
 
@@ -432,9 +444,90 @@ const intervalSlider = document.getElementById('interval-slider');
 const intervalValue  = document.getElementById('interval-value');
 const sleepToggle    = document.getElementById('sleep-toggle');
 const configHint     = document.getElementById('config-push-hint');
+const previewImg     = document.getElementById('config-preview-img');
+const previewHint    = document.getElementById('config-preview-hint');
+const framesizeSelect = document.getElementById('framesize-select');
+const hmirrorToggle  = document.getElementById('hmirror-toggle');
+const vflipToggle    = document.getElementById('vflip-toggle');
+const imageSliders   = ['quality', 'brightness', 'contrast', 'saturation', 'sharpness'];
+let savedImageConfig = null;
+let previewDirty     = false;
+let previewTimer     = null;
+let previewAbort     = null;
 
 intervalSlider.addEventListener('input', () => {
   intervalValue.textContent = `${intervalSlider.value} min`;
+});
+
+function readImageConfig() {
+  const config = {
+    framesize: framesizeSelect.value,
+    hmirror: hmirrorToggle.checked,
+    vflip: vflipToggle.checked,
+  };
+  imageSliders.forEach(name => {
+    config[name] = parseInt(document.getElementById(`${name}-slider`).value, 10);
+  });
+  return config;
+}
+
+function writeImageConfig(config) {
+  framesizeSelect.value = config.framesize ?? 'UXGA';
+  hmirrorToggle.checked = config.hmirror !== false;
+  vflipToggle.checked = config.vflip !== false;
+  imageSliders.forEach(name => {
+    const value = config[name] ?? (name === 'quality' ? 12 : 0);
+    document.getElementById(`${name}-slider`).value = value;
+    document.getElementById(`${name}-value`).textContent = value;
+  });
+}
+
+async function requestPreview(config = readImageConfig()) {
+  if (previewAbort) previewAbort.abort();
+  previewAbort = new AbortController();
+  previewHint.textContent = 'Updating real camera preview…';
+  previewHint.classList.remove('hidden');
+  try {
+    const r = await fetch('/api/camera/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+      signal: previewAbort.signal,
+    });
+    if (!r.ok) throw new Error();
+    const blob = await r.blob();
+    const previous = previewImg.src;
+    previewImg.src = URL.createObjectURL(blob);
+    if (previous && previous.startsWith('blob:')) URL.revokeObjectURL(previous);
+    previewHint.classList.add('hidden');
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    previewHint.textContent = 'Preview requires an awake camera. Changes can still be saved for the next wake.';
+    previewHint.classList.remove('hidden');
+  }
+}
+
+function schedulePreview() {
+  previewDirty = true;
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => requestPreview(), 250);
+}
+
+function restoreSavedPreview() {
+  clearTimeout(previewTimer);
+  if (!previewDirty || !savedImageConfig) return;
+  requestPreview(savedImageConfig);
+  previewDirty = false;
+}
+
+framesizeSelect.addEventListener('change', schedulePreview);
+hmirrorToggle.addEventListener('change', schedulePreview);
+vflipToggle.addEventListener('change', schedulePreview);
+imageSliders.forEach(name => {
+  document.getElementById(`${name}-slider`).addEventListener('input', event => {
+    document.getElementById(`${name}-value`).textContent = event.target.value;
+    schedulePreview();
+  });
 });
 
 async function loadCameraConfig() {
@@ -446,6 +539,10 @@ async function loadCameraConfig() {
     intervalSlider.value     = mins;
     intervalValue.textContent = `${mins} min`;
     sleepToggle.checked      = d.sleep_enabled !== false;
+    writeImageConfig(d);
+    savedImageConfig = readImageConfig();
+    previewDirty = false;
+    requestPreview(savedImageConfig);
     configHint.classList.add('hidden');
   } catch { /* keep defaults */ }
 }
@@ -457,6 +554,7 @@ document.getElementById('btn-save-config').addEventListener('click', async () =>
     const body = {
       interval_minutes: parseInt(intervalSlider.value, 10),
       sleep_enabled: sleepToggle.checked,
+      ...readImageConfig(),
     };
     const r = await fetch('/api/camera/config', {
       method: 'POST',
@@ -465,6 +563,8 @@ document.getElementById('btn-save-config').addEventListener('click', async () =>
     });
     if (!r.ok) throw new Error(`server error ${r.status}`);
     const d = await r.json();
+    savedImageConfig = readImageConfig();
+    previewDirty = false;
     if (d.pushed_to_camera) {
       showToast('Config saved and applied to camera', 'success');
       configHint.classList.add('hidden');

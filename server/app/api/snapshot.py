@@ -18,7 +18,10 @@ async def live_snapshot(repo: FrameRepository = Depends(get_repo)):
     try:
         data = await fetch_snapshot()
         return Response(content=data, media_type="image/jpeg",
-                        headers={"Cache-Control": "no-store"})
+                        headers={
+                            "Cache-Control": "no-store",
+                            "X-Snapshot-Source": "live",
+                        })
     except (httpx.RequestError, httpx.HTTPStatusError):
         pass
 
@@ -29,4 +32,8 @@ async def live_snapshot(repo: FrameRepository = Depends(get_repo)):
     if not path.exists():
         return Response(status_code=503, content="camera offline")
     return FileResponse(str(path), media_type="image/jpeg",
-                        headers={"Cache-Control": "no-store"})
+                        headers={
+                            "Cache-Control": "no-store",
+                            "X-Snapshot-Source": "cached",
+                            "X-Captured-At": frame.captured_at,
+                        })

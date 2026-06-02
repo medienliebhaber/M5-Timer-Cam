@@ -1,13 +1,24 @@
-# Hardware Reference — M5 Timer Camera X
+# Hardware Reference
+
+M5Stack Timer Camera X board details used by the firmware.
+
+## Camera
+
+| Property | Value |
+|----------|-------|
+| Sensor | OV3660 |
+| Maximum resolution | 2048 x 1536 |
+| Default firmware resolution | UXGA, 1600 x 1200 |
+| DFOV | 66.5 degrees |
 
 ## GPIO Map
 
-### Camera (OV3660)
+### OV3660
 
 | Signal | GPIO |
 |--------|------|
-| SIOC (I2C clock) | 23 |
-| SIOD (I2C data) | 25 |
+| SIOC | 23 |
+| SIOD | 25 |
 | XCLK | 27 |
 | VSYNC | 22 |
 | HREF | 26 |
@@ -25,48 +36,40 @@
 ### Peripherals
 
 | Peripheral | Signal | GPIO |
-|-----------|--------|------|
-| LED | Output | 2 |
-| RTC BM8563 | SCL | 14 |
-| RTC BM8563 | SDA | 12 |
-| Battery ADC | Analog in | 38 |
-| Battery Hold | Output (keep power on) | 33 |
+|------------|--------|------|
+| Status LED | Output | 2 |
+| BM8563 | SCL | 14 |
+| BM8563 | SDA | 12 |
+| Battery ADC | Analog input | 38 |
+| Battery hold | Output | 33 |
 | HY2.0-4P connector | SCL | 13 |
 | HY2.0-4P connector | SDA | 4 |
+
+## Power
+
+| Property | Value |
+|----------|-------|
+| Battery | 140 mAh |
+| Active current | Approximately 180 mA with WiFi and camera active |
+| Low-power current | Approximately 2 uA |
+
+The firmware drives battery hold on GPIO33 high during startup. Before timed
+sleep it configures the ESP32 timer wakeup and releases GPIO33 low. The BM8563
+retains wall-clock time so captured images can be timestamped after wake.
+
+When battery voltage exceeds 4.1 V, the firmware assumes USB charging and stays
+awake.
 
 ## Physical
 
 | Property | Value |
 |----------|-------|
-| Size | 48 × 24 × 15 mm |
-| Weight | 14g |
-| Connector | USB Type-C (power + serial) |
-| Grove connector | HY2.0-4P (I2C) |
+| Size | 48 x 24 x 15 mm |
+| Weight | 14 g |
+| USB | Type-C for power, flashing, and serial monitoring |
+| Expansion | HY2.0-4P I2C connector |
 
-## Power
+## Related Reference
 
-| Mode | Current |
-|------|---------|
-| Active (WiFi + camera) | ~180mA |
-| Deep sleep | ~2µA |
-| Battery capacity | 140mAh |
-
-At 5-minute intervals, active time ~3s per cycle → battery lasts approximately 2 weeks.
-At 60-minute intervals → approximately 1 month.
-
-**Battery Hold (GPIO33):** Must be driven HIGH on boot to keep the battery circuit active. Release it LOW before deep sleep to allow the RTC to cut power and achieve the 2µA sleep current.
-
-## Camera Specs
-
-| Spec | Value |
-|------|-------|
-| Sensor | OV3660 |
-| Max resolution | 2048 × 1536 (3MP) |
-| DFOV | 66.5° |
-| Output formats | RAW 8/10-bit, RGB, YCbCr, JPEG |
-
-## Wiring Notes
-
-- No external wiring required for basic operation — all peripherals are onboard.
-- Grove/HY2.0-4P port (GPIO13/4) is available for external I2C sensors.
-- USB-C is used for flashing and serial monitoring (`idf.py flash monitor`).
+- [Firmware lifecycle](firmware/lifecycle.md)
+- [Firmware components](firmware/components.md)

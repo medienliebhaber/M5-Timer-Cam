@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>M5 Timer Camera</title>
-  <link rel="stylesheet" href="/static/style.css?v=6">
+  <link rel="stylesheet" href="/static/style.css?v=7">
 </head>
 <body>
 
@@ -283,6 +283,57 @@
               <span class="toggle-knob"></span>
             </label>
           </div>
+          <div class="camera-preview">
+            <img id="config-preview-img" alt="Camera settings preview">
+            <div id="config-preview-hint" class="camera-preview-hint">Preview requires an awake camera.</div>
+          </div>
+          <div class="field-group">
+            <label for="framesize-select">Resolution</label>
+            <select id="framesize-select">
+              <option value="VGA">VGA · 640×480</option>
+              <option value="SVGA">SVGA · 800×600</option>
+              <option value="XGA">XGA · 1024×768</option>
+              <option value="SXGA">SXGA · 1280×1024</option>
+              <option value="UXGA" selected>UXGA · 1600×1200</option>
+              <option value="QXGA">QXGA · 2048×1536</option>
+            </select>
+          </div>
+          <div class="image-slider-grid">
+            <div class="field-group">
+              <label for="quality-slider">JPEG quality <span id="quality-value">12</span></label>
+              <input type="range" id="quality-slider" min="0" max="63" value="12">
+            </div>
+            <div class="field-group">
+              <label for="brightness-slider">Brightness <span id="brightness-value">0</span></label>
+              <input type="range" id="brightness-slider" min="-3" max="3" value="0">
+            </div>
+            <div class="field-group">
+              <label for="contrast-slider">Contrast <span id="contrast-value">0</span></label>
+              <input type="range" id="contrast-slider" min="-3" max="3" value="0">
+            </div>
+            <div class="field-group">
+              <label for="saturation-slider">Saturation <span id="saturation-value">0</span></label>
+              <input type="range" id="saturation-slider" min="-4" max="4" value="0">
+            </div>
+            <div class="field-group">
+              <label for="sharpness-slider">Sharpness <span id="sharpness-value">0</span></label>
+              <input type="range" id="sharpness-slider" min="-3" max="3" value="0">
+            </div>
+          </div>
+          <div class="toggle-row">
+            <label for="hmirror-toggle" class="toggle-label">Horizontal mirror</label>
+            <label class="toggle">
+              <input type="checkbox" id="hmirror-toggle" checked>
+              <span class="toggle-knob"></span>
+            </label>
+          </div>
+          <div class="toggle-row">
+            <label for="vflip-toggle" class="toggle-label">Vertical flip</label>
+            <label class="toggle">
+              <input type="checkbox" id="vflip-toggle" checked>
+              <span class="toggle-knob"></span>
+            </label>
+          </div>
           <p id="config-push-hint" class="settings-hint hidden">Will apply when camera wakes up.</p>
           <button id="btn-save-config" class="btn btn-primary" style="width:100%;margin-top:0.25rem">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -309,6 +360,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=6"></script>
+  <script src="/static/app.js?v=8"></script>
 </body>
 </html>

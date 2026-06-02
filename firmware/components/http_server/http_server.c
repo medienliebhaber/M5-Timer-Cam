@@ -7,6 +7,7 @@
 #include "esp_wifi.h"
 #include "nvs.h"
 #include "driver/adc.h"
+#include "cJSON.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
@@ -51,6 +52,20 @@ static void cfg_write_i32(const char *key, int32_t val)
     nvs_set_i32(h, key, val);
     nvs_commit(h);
     nvs_close(h);
+}
+
+static int recv_body(httpd_req_t *req, char *body, size_t size)
+{
+    if (req->content_len <= 0 || req->content_len >= size) return -1;
+    int received = 0;
+    while (received < req->content_len) {
+        int ret = httpd_req_recv(req, body + received, req->content_len - received);
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) continue;
+        if (ret <= 0) return -1;
+        received += ret;
+    }
+    body[received] = '\0';
+    return received;
 }
 
 /* ── Battery ADC (GPIO38 = ADC1_CH2, 100k/100k divider) ───────────────── */
@@ -122,16 +137,66 @@ static const httpd_uri_t STATUS_URI = {
     .user_ctx = NULL,
 };
 
+static bool image_config_update(cJSON *root, camera_image_config_t *config,
+                                bool *changed)
+{
+    cJSON *item;
+#define UPDATE_INT(name) do { \
+    item = cJSON_GetObjectItemCaseSensitive(root, #name); \
+    if (item) { \
+        if (!cJSON_IsNumber(item)) return false; \
+        config->name = item->valueint; \
+        *changed = true; \
+    } \
+} while (0)
+#define UPDATE_BOOL(name) do { \
+    item = cJSON_GetObjectItemCaseSensitive(root, #name); \
+    if (item) { \
+        if (!cJSON_IsBool(item)) return false; \
+        config->name = cJSON_IsTrue(item); \
+        *changed = true; \
+    } \
+} while (0)
+
+    item = cJSON_GetObjectItemCaseSensitive(root, "framesize");
+    if (item) {
+        if (!cJSON_IsString(item) || !item->valuestring) return false;
+        strlcpy(config->framesize, item->valuestring, sizeof(config->framesize));
+        *changed = true;
+    }
+    UPDATE_INT(quality);
+    UPDATE_INT(brightness);
+    UPDATE_INT(contrast);
+    UPDATE_INT(saturation);
+    UPDATE_INT(sharpness);
+    UPDATE_BOOL(hmirror);
+    UPDATE_BOOL(vflip);
+#undef UPDATE_INT
+#undef UPDATE_BOOL
+    return true;
+}
+
 /* ── GET /config ───────────────────────────────────────────────────────── */
 static esp_err_t config_get_handler(httpd_req_t *req)
 {
     int  interval = cam_config_get_interval();
     bool sleep_en = cam_config_get_sleep_enabled();
+    camera_image_config_t image;
+    if (camera_image_config_get(&image) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "camera config unavailable");
+        return ESP_FAIL;
+    }
 
-    char buf[96];
+    char buf[320];
     snprintf(buf, sizeof(buf),
-        "{\"interval_minutes\":%d,\"sleep_enabled\":%s}",
-        interval, sleep_en ? "true" : "false");
+        "{\"interval_minutes\":%d,\"sleep_enabled\":%s,"
+        "\"framesize\":\"%s\",\"quality\":%d,\"brightness\":%d,"
+        "\"contrast\":%d,\"saturation\":%d,\"sharpness\":%d,"
+        "\"hmirror\":%s,\"vflip\":%s}",
+        interval, sleep_en ? "true" : "false", image.framesize,
+        image.quality, image.brightness, image.contrast, image.saturation,
+        image.sharpness, image.hmirror ? "true" : "false",
+        image.vflip ? "true" : "false");
 
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, buf);
@@ -147,33 +212,54 @@ static const httpd_uri_t CONFIG_GET_URI = {
 /* ── POST /config ──────────────────────────────────────────────────────── */
 static esp_err_t config_post_handler(httpd_req_t *req)
 {
-    char body[256] = {0};
-    int  received  = httpd_req_recv(req, body, sizeof(body) - 1);
+    char body[512] = {0};
+    int received = recv_body(req, body, sizeof(body));
     if (received <= 0) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "empty body");
         return ESP_FAIL;
     }
 
-    /* Parse "interval_minutes": N */
-    char *p = strstr(body, "\"interval_minutes\"");
-    if (p) {
-        p = strchr(p, ':');
-        if (p) {
-            int v = 0;
-            sscanf(p + 1, " %d", &v);
-            if (v >= 1 && v <= 1440) cfg_write_i32(NVS_KEY_INT, v);
-        }
+    cJSON *root = cJSON_Parse(body);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid JSON");
+        return ESP_FAIL;
     }
 
-    /* Parse "sleep_enabled": true|false */
-    p = strstr(body, "\"sleep_enabled\"");
-    if (p) {
-        p = strchr(p, ':');
-        if (p) {
-            while (*p == ':' || *p == ' ') p++;
-            cfg_write_i32(NVS_KEY_SLP, strncmp(p, "true", 4) == 0 ? 1 : 0);
+    cJSON *item = cJSON_GetObjectItemCaseSensitive(root, "interval_minutes");
+    bool interval_changed = item != NULL;
+    int interval = 0;
+    if (item) {
+        if (!cJSON_IsNumber(item) || item->valueint < 1 || item->valueint > 1440) {
+            cJSON_Delete(root);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid interval");
+            return ESP_FAIL;
         }
+        interval = item->valueint;
     }
+    item = cJSON_GetObjectItemCaseSensitive(root, "sleep_enabled");
+    bool sleep_changed = item != NULL;
+    bool sleep_enabled = false;
+    if (item) {
+        if (!cJSON_IsBool(item)) {
+            cJSON_Delete(root);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid sleep flag");
+            return ESP_FAIL;
+        }
+        sleep_enabled = cJSON_IsTrue(item);
+    }
+
+    camera_image_config_t image;
+    camera_image_config_get(&image);
+    bool image_changed = false;
+    if (!image_config_update(root, &image, &image_changed)
+        || (image_changed && camera_image_config_apply(&image, true) != ESP_OK)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid image config");
+        return ESP_FAIL;
+    }
+    if (interval_changed) cfg_write_i32(NVS_KEY_INT, interval);
+    if (sleep_changed) cfg_write_i32(NVS_KEY_SLP, sleep_enabled ? 1 : 0);
+    cJSON_Delete(root);
 
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
@@ -183,6 +269,50 @@ static const httpd_uri_t CONFIG_POST_URI = {
     .uri      = "/config",
     .method   = HTTP_POST,
     .handler  = config_post_handler,
+    .user_ctx = NULL,
+};
+
+/* ── POST /preview ─────────────────────────────────────────────────────── */
+static esp_err_t preview_post_handler(httpd_req_t *req)
+{
+    char body[512] = {0};
+    int received = recv_body(req, body, sizeof(body));
+    if (received <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "empty body");
+        return ESP_FAIL;
+    }
+    cJSON *root = cJSON_Parse(body);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid JSON");
+        return ESP_FAIL;
+    }
+    camera_image_config_t image;
+    camera_image_config_get(&image);
+    bool changed = false;
+    bool valid = image_config_update(root, &image, &changed);
+    cJSON_Delete(root);
+    if (!valid) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid image config");
+        return ESP_FAIL;
+    }
+    uint8_t *buf = NULL;
+    size_t len = 0;
+    esp_err_t err = camera_preview_capture(&image, &buf, &len);
+    if (err != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "preview failed");
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(req, "image/jpeg");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    err = httpd_resp_send(req, (const char *)buf, (ssize_t)len);
+    camera_release(buf);
+    return err;
+}
+
+static const httpd_uri_t PREVIEW_URI = {
+    .uri      = "/preview",
+    .method   = HTTP_POST,
+    .handler  = preview_post_handler,
     .user_ctx = NULL,
 };
 
@@ -270,8 +400,9 @@ esp_err_t http_server_start(void)
     httpd_register_uri_handler(s_server, &STATUS_URI);
     httpd_register_uri_handler(s_server, &CONFIG_GET_URI);
     httpd_register_uri_handler(s_server, &CONFIG_POST_URI);
+    httpd_register_uri_handler(s_server, &PREVIEW_URI);
     httpd_register_uri_handler(s_server, &OTA_URI);
-    ESP_LOGI(TAG, "started on port 80 (/snapshot /status /config /ota)");
+    ESP_LOGI(TAG, "started on port 80 (/snapshot /status /config /preview /ota)");
     return ESP_OK;
 }
 

@@ -9,7 +9,7 @@ from app.storage.repository import FrameRepository
 
 @pytest.fixture
 def tmp_data(tmp_path):
-    db_path = tmp_path / "test.db"
+    db_path = tmp_path / "camera.db"
     images_dir = tmp_path / "images"
     images_dir.mkdir()
     init_db(db_path)
@@ -25,8 +25,6 @@ def repo(tmp_data):
 def client(tmp_data, monkeypatch):
     from app import config as cfg_module
     monkeypatch.setattr(cfg_module.settings, "data_dir", tmp_data["data_dir"])
-    monkeypatch.setattr(cfg_module.settings, "_images_dir", tmp_data["images_dir"])
-    monkeypatch.setattr(cfg_module.settings, "db_path", tmp_data["db_path"])
 
     from app.main import app
     return TestClient(app)

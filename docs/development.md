@@ -1,141 +1,77 @@
 # Development Workflow
 
-## Prerequisites
+Complete [setup](setup.md) before using this guide.
 
-Install these once:
-
-```bash
-# ESP-IDF v5.x — follow official guide:
-# https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/
-
-# Python 3.12+
-brew install python@3.12
-
-# uv (fast Python package manager)
-curl -Ls https://astral.sh/uv/install.sh | sh
-
-# GitHub CLI
-brew install gh
-gh auth login
-```
-
-## First-Time Setup
-
-```bash
-git clone https://github.com/maskow/M5-Timer-Cam
-cd M5-Timer-Cam
-
-# Server setup
-cd server
-../scripts/setup.sh
-cd ..
-
-# Firmware config
-cd firmware
-idf.py menuconfig
-# Set: WIFI_SSID, WIFI_PASSWORD, SERVER_IP, SERVER_PORT
-cd ..
-```
-
-## Day-to-Day Development
-
-### Running the server
+## Run the Server
 
 ```bash
 cd server
 uvicorn app.main:app --reload
 ```
 
-UI at [http://localhost:8000](http://localhost:8000)
-API docs at [http://localhost:8000/docs](http://localhost:8000/docs) (FastAPI auto-generated)
+- UI: [http://localhost:8000](http://localhost:8000)
+- Generated API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-### Firmware development loop
+## Firmware Loop
+
+From the repository root:
 
 ```bash
-# Edit firmware source
-# Then:
-scripts/flash.sh        # build + flash (takes ~30s on first build, ~5s incremental)
-scripts/monitor.sh      # attach serial monitor
-
-# Or one command:
-cd firmware && idf.py build flash monitor
+scripts/flash.sh
+scripts/monitor.sh
 ```
 
-### Test the full pipeline
+Exit the serial monitor with `Ctrl+]`.
+
+For lifecycle and configuration details, see the
+[firmware reference](firmware/README.md).
+
+## Smoke Test
+
+With the server running and the camera awake:
 
 ```bash
 scripts/test_camera.sh
 ```
 
-This:
-1. Pings the camera
-2. Pulls a live snapshot
-3. POSTs a test frame to the server
-4. Verifies the frame appears in the API
+The script checks camera reachability, fetches a live snapshot, posts a test
+frame to the server, and verifies that the frame appears in the gallery API.
 
-Requires: camera on network, server running.
+## Automated Tests
 
-## Testing
-
-### Server tests (no camera needed)
+Server tests do not require a camera:
 
 ```bash
 cd server
 pytest -v
 ```
 
-### Firmware test mode
+## Change Checklist
 
-Flash with test mode to run a continuous capture loop (no deep sleep):
+When adding a firmware feature:
 
-```bash
-cd firmware
-# Enable test mode in menuconfig: M5 TimerCam → Enable test mode
-idf.py build flash monitor
-```
+1. Update the relevant file under `docs/firmware/`.
+2. Update [hardware.md](hardware.md) only when board or GPIO facts change.
+3. Run the firmware build and relevant hardware validation.
 
-Watch serial output — should see `CAPTURE OK` and `POST OK` every 2 seconds.
-Check the Gallery tab in the browser to confirm frames are arriving.
+When adding a server endpoint:
 
-## Making Changes
+1. Add or update tests under `server/tests/`.
+2. Update [server/http-api.md](server/http-api.md).
+3. Run `cd server && pytest -v`.
 
-### Adding a new firmware component
+When changing UI behavior:
 
-1. Create `firmware/components/<name>/` with `CMakeLists.txt` and source files
-2. Add `REQUIRES <name>` to `firmware/main/CMakeLists.txt`
-3. Add Kconfig options if needed
-4. Document in `docs/firmware.md`
-
-### Adding a new API endpoint
-
-1. Create or edit a route file in `server/app/api/`
-2. Register the router in `server/app/main.py`
-3. Add tests in `server/tests/`
-4. Update `docs/server.md`
-
-### Changing the DB schema
-
-SQLite migrations are run at startup by `server/app/storage/db.py`. Add new `ALTER TABLE` statements there — they are idempotent (wrapped in `IF NOT EXISTS` checks).
-
-## Git Workflow
-
-```bash
-git checkout -b feature/my-change
-# make changes
-git add <specific files>
-git commit -m "feat: description of what changed"
-git push -u origin feature/my-change
-gh pr create
-```
-
-Commit types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
+1. Update [web-ui.md](web-ui.md).
+2. Check the affected desktop and mobile flows in the browser.
 
 ## Troubleshooting
 
 | Symptom | Check |
 |---------|-------|
-| `idf.py: command not found` | Source IDF: `. $HOME/esp/esp-idf/export.sh` |
-| Camera not reachable | Check WiFi credentials in `sdkconfig`, verify camera LED |
-| Server can't reach camera | Check `CAMERA_IP` in `.env`, ping from server machine |
-| Frames not appearing | Check `scripts/monitor.sh` for HTTP POST errors |
-| DB errors on startup | Delete `data/camera.db` — it will be recreated |
+| `idf.py: command not found` | Source ESP-IDF: `. $HOME/esp/esp-idf/export.sh` |
+| Camera not reachable | Check WiFi settings in `firmware/sdkconfig` and `CAMERA_IP` in `server/.env` |
+| Frames not appearing | Run `scripts/monitor.sh` and inspect upload errors |
+| Live view shows an old image | The camera may be sleeping; `/api/snapshot` falls back to the latest stored frame |
+| Server database errors | Stop the server, remove `data/camera.db`, and restart to recreate it |
+| OTA update fails | Keep the camera awake and verify the [partition table](firmware/partitions.md) |

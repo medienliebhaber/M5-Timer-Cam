@@ -1,7 +1,18 @@
 import json
 from pathlib import Path
 
-_DEFAULT: dict = {"interval_minutes": 1, "sleep_enabled": True}
+_DEFAULT: dict = {
+    "interval_minutes": 1,
+    "sleep_enabled": True,
+    "framesize": "UXGA",
+    "quality": 12,
+    "brightness": 0,
+    "contrast": 0,
+    "saturation": 0,
+    "sharpness": 0,
+    "hmirror": True,
+    "vflip": True,
+}
 
 
 class CameraConfigStore:

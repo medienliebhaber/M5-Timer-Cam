@@ -1,7 +1,9 @@
-from typing import Any
+from typing import Any, Literal
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..config import settings
 from ..storage.config_store import CameraConfigStore
@@ -9,7 +11,35 @@ from ..storage.repository import FrameRepository
 
 router = APIRouter(tags=["camera"])
 
-_CAMERA_BASE = f"http://{{ip}}:{{port}}"
+FrameSize = Literal["VGA", "SVGA", "XGA", "SXGA", "UXGA", "QXGA"]
+
+
+class ImageConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    framesize: FrameSize
+    quality: int = Field(ge=0, le=63)
+    brightness: int = Field(ge=-3, le=3)
+    contrast: int = Field(ge=-3, le=3)
+    saturation: int = Field(ge=-4, le=4)
+    sharpness: int = Field(ge=-3, le=3)
+    hmirror: bool
+    vflip: bool
+
+
+class CameraConfigUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    interval_minutes: int | None = Field(default=None, ge=1, le=1440)
+    sleep_enabled: bool | None = None
+    framesize: FrameSize | None = None
+    quality: int | None = Field(default=None, ge=0, le=63)
+    brightness: int | None = Field(default=None, ge=-3, le=3)
+    contrast: int | None = Field(default=None, ge=-3, le=3)
+    saturation: int | None = Field(default=None, ge=-4, le=4)
+    sharpness: int | None = Field(default=None, ge=-3, le=3)
+    hmirror: bool | None = None
+    vflip: bool | None = None
 
 
 def _camera_url(path: str) -> str:
@@ -44,8 +74,8 @@ async def get_camera_config() -> Any:
 
 
 @router.post("/api/camera/config")
-async def set_camera_config(request: Request) -> Any:
-    body: dict = await request.json()
+async def set_camera_config(update: CameraConfigUpdate) -> Any:
+    body = update.model_dump(exclude_none=True)
     _store().save(body)
 
     pushed = False
@@ -62,6 +92,25 @@ async def set_camera_config(request: Request) -> Any:
         pass
 
     return {"status": "saved", "pushed_to_camera": pushed}
+
+
+@router.post("/api/camera/preview")
+async def preview_camera_config(config: ImageConfig) -> Response:
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(
+                _camera_url("/preview"),
+                json=config.model_dump(),
+                headers={"Content-Type": "application/json"},
+            )
+            r.raise_for_status()
+            return Response(
+                content=r.content,
+                media_type="image/jpeg",
+                headers={"Cache-Control": "no-store"},
+            )
+    except Exception as exc:
+        raise HTTPException(503, f"camera offline: {exc}")
 
 
 @router.get("/api/storage")

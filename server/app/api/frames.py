@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -28,7 +28,8 @@ async def ingest_frame(
     if not body:
         raise HTTPException(400, "empty body")
 
-    captured_at = x_captured_at or datetime.now(timezone.utc).isoformat()
+    received_at = datetime.now(timezone.utc)
+    captured_at = x_captured_at or received_at.isoformat()
     trigger = x_trigger or "manual"
 
     # Determine image dimensions via Pillow (best-effort)
@@ -44,8 +45,14 @@ async def ingest_frame(
     # Build storage path: YYYY/MM/DD/HH-MM-SS_{trigger}.jpg
     try:
         dt = datetime.fromisoformat(captured_at.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        if abs(dt - received_at) > timedelta(days=1):
+            dt = received_at
+            captured_at = received_at.isoformat()
     except ValueError:
-        dt = datetime.now(timezone.utc)
+        dt = received_at
+        captured_at = received_at.isoformat()
 
     rel = dt.strftime(f"%Y/%m/%d/%H-%M-%S_{trigger}.jpg")
     abs_path = settings.images_dir / rel
@@ -69,6 +76,14 @@ async def ingest_frame(
         headers={
             "X-Config-Interval": str(cfg.get("interval_minutes", 1)),
             "X-Config-Sleep": "1" if cfg.get("sleep_enabled", True) else "0",
+            "X-Config-Framesize": str(cfg.get("framesize", "UXGA")),
+            "X-Config-Quality": str(cfg.get("quality", 12)),
+            "X-Config-Brightness": str(cfg.get("brightness", 0)),
+            "X-Config-Contrast": str(cfg.get("contrast", 0)),
+            "X-Config-Saturation": str(cfg.get("saturation", 0)),
+            "X-Config-Sharpness": str(cfg.get("sharpness", 0)),
+            "X-Config-Hmirror": "1" if cfg.get("hmirror", True) else "0",
+            "X-Config-Vflip": "1" if cfg.get("vflip", True) else "0",
         },
     )
 

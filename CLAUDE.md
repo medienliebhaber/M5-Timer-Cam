@@ -1,69 +1,39 @@
-# M5 Timer Camera X — Project Overview
+# M5 Timer Camera X
 
-## What This Is
+ESP-IDF firmware for the M5Stack Timer Camera X plus a FastAPI server and a
+plain HTML/CSS/JavaScript browser UI.
 
-ESP32-based timer camera that captures JPEGs on a schedule, POSTs them to a local FastAPI server, and serves a live view + gallery UI in the browser.
+## Start Here
 
-## Architecture
-
-```
-[M5 TimerCam X]  ──POST /api/frames──▶  [FastAPI server]  ──▶  [SQLite + filesystem]
-(ESP32, OV3660)  ◀──GET /snapshot────   (Python)                data/images/ + camera.db
-                                                │
-                                         [Web browser]
-                                         /  (live + gallery)
-```
-
-**Two delivery modes:**
-- **Timer push** — camera wakes from deep sleep, captures JPEG, POSTs to server, sleeps again
-- **Live pull** — server requests a fresh snapshot from the camera on demand
-
-## Quick Start
-
-```bash
-# 1. Server
-cd server && ./scripts/setup.sh
-uvicorn app.main:app --reload          # http://localhost:8000
-
-# 2. Firmware
-cd firmware
-cp sdkconfig.defaults sdkconfig        # then edit WIFI/SERVER settings via idf.py menuconfig
-../scripts/flash.sh                    # build + flash
-
-# 3. Test
-../scripts/test_camera.sh              # smoke test full pipeline
-```
+- [Documentation index](docs/README.md)
+- [Architecture](docs/architecture.md)
+- [Setup](docs/setup.md)
+- [Development workflow](docs/development.md)
 
 ## Repository Layout
 
 | Path | Purpose |
 |------|---------|
-| `firmware/` | ESP-IDF project — runs on the camera |
-| `server/` | FastAPI backend — ingest, storage, API |
-| `web/` | Static frontend — live view + gallery |
-| `scripts/` | Dev helpers: setup, flash, monitor, test |
-| `docs/` | All detailed documentation |
-| `data/` | Gitignored — images + SQLite DB |
+| `firmware/` | ESP-IDF camera firmware |
+| `server/` | FastAPI backend and tests |
+| `web/` | Static browser UI |
+| `scripts/` | Setup, flash, monitor, and smoke-test helpers |
+| `docs/` | Current reference documentation |
+| `docs/superpowers/specs/` | Historical design records |
+| `data/` | Gitignored runtime images, config cache, and SQLite database |
 
-## Key Documentation
+## Documentation Rules
 
-- [docs/hardware.md](docs/hardware.md) — GPIO map, pinout, wiring
-- [docs/firmware.md](docs/firmware.md) — Build, flash, components, test mode
-- [docs/server.md](docs/server.md) — API reference, DB schema, config
-- [docs/development.md](docs/development.md) — Full dev workflow end-to-end
+- Keep each maintained fact in one canonical topic file.
+- Keep `README.md`, `CLAUDE.md`, and directory `README.md` files as indexes.
+- Update [docs/README.md](docs/README.md) when adding a documentation topic.
+- Treat files under `docs/superpowers/specs/` as historical records, not current
+  reference documentation.
+- Keep secrets in gitignored `server/.env` and `firmware/sdkconfig`.
 
-## Tech Stack
+## Component References
 
-| Layer | Technology |
-|-------|-----------|
-| Firmware | ESP-IDF (native C), ESP32-D0WDQ6-V3 |
-| Camera | OV3660, up to 3MP |
-| Server | Python 3.12+, FastAPI, SQLite, httpx |
-| Frontend | Vanilla HTML/JS, no build step |
-
-## AI Assistant Notes
-
-- All design decisions are documented in `docs/superpowers/specs/`
-- Each major component has its own doc in `docs/`
-- `sdkconfig.defaults` captures all non-secret firmware settings
-- Secret values (WiFi password, server IP) live only in `sdkconfig` (gitignored) and `.env` (gitignored)
+- [Firmware](docs/firmware/README.md)
+- [Server](docs/server/README.md)
+- [Web UI](docs/web-ui.md)
+- [Hardware](docs/hardware.md)
