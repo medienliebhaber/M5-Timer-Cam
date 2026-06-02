@@ -136,6 +136,8 @@ esp_err_t bm8563_power_off(void)
 
     esp_err_t err = bm8563_write_reg(BM8563_REG_TIMER_CTRL, 0);
     if (err != ESP_OK) return err;
+    err = bm8563_write_reg(BM8563_REG_CTRL_STATUS2, 0);
+    if (err != ESP_OK) return err;
 
     err = gpio_set_level(BAT_HOLD_PIN, 0);
     if (err != ESP_OK) return err;
