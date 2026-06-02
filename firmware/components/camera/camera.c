@@ -204,7 +204,20 @@ esp_err_t camera_init(void)
     }
     camera_image_config_t config;
     camera_image_config_load(&config);
-    return camera_image_config_apply(&config, false);
+    esp_err_t cfg_err = camera_image_config_apply(&config, false);
+    if (cfg_err != ESP_OK) return cfg_err;
+
+    /* OV3660 needs one frame to stabilise after waking from deep sleep.
+     * Discarded AFTER config apply so any framesize change takes effect first;
+     * without this the first real capture sometimes returns NULL. */
+    camera_fb_t *warmup = esp_camera_fb_get();
+    if (warmup) {
+        esp_camera_fb_return(warmup);
+        ESP_LOGI(TAG, "sensor warmed up");
+    } else {
+        ESP_LOGW(TAG, "warmup frame not available — sensor may be slow");
+    }
+    return ESP_OK;
 }
 
 static esp_err_t capture_locked(uint8_t **buf, size_t *len)

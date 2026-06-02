@@ -16,68 +16,103 @@ static const char *TAG = "http_client";
 #define NVS_KEY_INT "interval"
 #define NVS_KEY_SLP "sleep_en"
 
-static void apply_config_header(esp_http_client_handle_t client,
-                                 const char *header, const char *nvs_key)
-{
-    char *val = NULL;
-    esp_http_client_get_header(client, header, &val);
-    if (!val || *val == '\0') return;
+/* ── Response-header capture ───────────────────────────────────────────── */
 
+/* Holds the config values found in the server's POST response headers.
+ * Fields are zero-initialised; a non-empty string means the header arrived. */
+typedef struct {
+    char interval[8];
+    char sleep[4];
+    char framesize[8];
+    char quality[4];
+    char brightness[4];
+    char contrast[4];
+    char saturation[4];
+    char sharpness[4];
+    char hmirror[4];
+    char vflip[4];
+} resp_cfg_t;
+
+static esp_err_t http_event_handler(esp_http_client_event_t *evt)
+{
+    if (evt->event_id != HTTP_EVENT_ON_HEADER) return ESP_OK;
+    resp_cfg_t *r = (resp_cfg_t *)evt->user_data;
+    const char *k = evt->header_key;
+    const char *v = evt->header_value;
+
+    if      (strcasecmp(k, "X-Config-Interval")   == 0) strlcpy(r->interval,   v, sizeof(r->interval));
+    else if (strcasecmp(k, "X-Config-Sleep")       == 0) strlcpy(r->sleep,      v, sizeof(r->sleep));
+    else if (strcasecmp(k, "X-Config-Framesize")   == 0) strlcpy(r->framesize,  v, sizeof(r->framesize));
+    else if (strcasecmp(k, "X-Config-Quality")     == 0) strlcpy(r->quality,    v, sizeof(r->quality));
+    else if (strcasecmp(k, "X-Config-Brightness")  == 0) strlcpy(r->brightness, v, sizeof(r->brightness));
+    else if (strcasecmp(k, "X-Config-Contrast")    == 0) strlcpy(r->contrast,   v, sizeof(r->contrast));
+    else if (strcasecmp(k, "X-Config-Saturation")  == 0) strlcpy(r->saturation, v, sizeof(r->saturation));
+    else if (strcasecmp(k, "X-Config-Sharpness")   == 0) strlcpy(r->sharpness,  v, sizeof(r->sharpness));
+    else if (strcasecmp(k, "X-Config-Hmirror")     == 0) strlcpy(r->hmirror,    v, sizeof(r->hmirror));
+    else if (strcasecmp(k, "X-Config-Vflip")       == 0) strlcpy(r->vflip,      v, sizeof(r->vflip));
+
+    return ESP_OK;
+}
+
+/* ── NVS helpers ───────────────────────────────────────────────────────── */
+
+static void apply_nvs_int(const char *val, const char *key, int min, int max)
+{
+    if (!val || !*val) return;
+    int v = atoi(val);
+    if (v < min || v > max) return;
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) return;
-
-    if (strcmp(nvs_key, NVS_KEY_INT) == 0) {
-        int v = atoi(val);
-        if (v >= 1 && v <= 1440) {
-            nvs_set_i32(h, nvs_key, (int32_t)v);
-            ESP_LOGI(TAG, "config: interval=%d min", v);
-        }
-    } else if (strcmp(nvs_key, NVS_KEY_SLP) == 0) {
-        int32_t v = (*val == '1') ? 1 : 0;
-        nvs_set_i32(h, nvs_key, v);
-        ESP_LOGI(TAG, "config: sleep_enabled=%d", (int)v);
-    }
-
+    nvs_set_i32(h, key, (int32_t)v);
     nvs_commit(h);
     nvs_close(h);
+    ESP_LOGI(TAG, "config: %s=%d", key, v);
 }
 
-static void apply_image_config_headers(esp_http_client_handle_t client)
+static void apply_nvs_bool(const char *val, const char *key)
 {
-    camera_image_config_t config;
-    camera_image_config_load(&config);
-    char *val = NULL;
+    if (!val || !*val) return;
+    int32_t v = (*val == '1') ? 1 : 0;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_set_i32(h, key, v);
+    nvs_commit(h);
+    nvs_close(h);
+    ESP_LOGI(TAG, "config: %s=%d", key, (int)v);
+}
 
-    esp_http_client_get_header(client, "X-Config-Framesize", &val);
-    if (val && *val) strlcpy(config.framesize, val, sizeof(config.framesize));
-    val = NULL;
-    esp_http_client_get_header(client, "X-Config-Quality", &val);
-    if (val && *val) config.quality = atoi(val);
-    val = NULL;
-    esp_http_client_get_header(client, "X-Config-Brightness", &val);
-    if (val && *val) config.brightness = atoi(val);
-    val = NULL;
-    esp_http_client_get_header(client, "X-Config-Contrast", &val);
-    if (val && *val) config.contrast = atoi(val);
-    val = NULL;
-    esp_http_client_get_header(client, "X-Config-Saturation", &val);
-    if (val && *val) config.saturation = atoi(val);
-    val = NULL;
-    esp_http_client_get_header(client, "X-Config-Sharpness", &val);
-    if (val && *val) config.sharpness = atoi(val);
-    val = NULL;
-    esp_http_client_get_header(client, "X-Config-Hmirror", &val);
-    if (val && *val) config.hmirror = *val == '1';
-    val = NULL;
-    esp_http_client_get_header(client, "X-Config-Vflip", &val);
-    if (val && *val) config.vflip = *val == '1';
+/* ── Apply response config ─────────────────────────────────────────────── */
 
-    esp_err_t err = camera_image_config_apply(&config, true);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "ignoring invalid image config headers: %s",
-                 esp_err_to_name(err));
+static void apply_resp_config(const resp_cfg_t *r)
+{
+    apply_nvs_int(r->interval, NVS_KEY_INT, 1, 1440);
+    apply_nvs_bool(r->sleep, NVS_KEY_SLP);
+
+    if (!r->framesize[0]) return;  /* no image config headers → skip */
+
+    camera_image_config_t img;
+    camera_image_config_load(&img);
+    bool changed = false;
+
+    if (r->framesize[0])  { strlcpy(img.framesize, r->framesize, sizeof(img.framesize)); changed = true; }
+    if (r->quality[0])    { img.quality    = atoi(r->quality);    changed = true; }
+    if (r->brightness[0]) { img.brightness = atoi(r->brightness); changed = true; }
+    if (r->contrast[0])   { img.contrast   = atoi(r->contrast);   changed = true; }
+    if (r->saturation[0]) { img.saturation = atoi(r->saturation); changed = true; }
+    if (r->sharpness[0])  { img.sharpness  = atoi(r->sharpness);  changed = true; }
+    if (r->hmirror[0])    { img.hmirror    = r->hmirror[0] == '1'; changed = true; }
+    if (r->vflip[0])      { img.vflip      = r->vflip[0]   == '1'; changed = true; }
+
+    if (changed) {
+        esp_err_t err = camera_image_config_apply(&img, true);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "ignoring invalid image config from server: %s",
+                     esp_err_to_name(err));
+        }
     }
 }
+
+/* ── POST a frame ──────────────────────────────────────────────────────── */
 
 esp_err_t http_client_post_frame(const uint8_t *buf, size_t len,
                                   const char *trigger)
@@ -92,10 +127,14 @@ esp_err_t http_client_post_frame(const uint8_t *buf, size_t len,
         strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", &t);
     }
 
+    resp_cfg_t resp = {0};
+
     esp_http_client_config_t cfg = {
-        .url        = url,
-        .method     = HTTP_METHOD_POST,
-        .timeout_ms = 10000,
+        .url           = url,
+        .method        = HTTP_METHOD_POST,
+        .timeout_ms    = 10000,
+        .event_handler = http_event_handler,
+        .user_data     = &resp,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
@@ -109,9 +148,7 @@ esp_err_t http_client_post_frame(const uint8_t *buf, size_t len,
         int status = esp_http_client_get_status_code(client);
         ESP_LOGI(TAG, "POST %s → %d", url, status);
         if (status >= 200 && status < 300) {
-            apply_config_header(client, "X-Config-Interval", NVS_KEY_INT);
-            apply_config_header(client, "X-Config-Sleep",    NVS_KEY_SLP);
-            apply_image_config_headers(client);
+            apply_resp_config(&resp);
         } else {
             err = ESP_FAIL;
         }

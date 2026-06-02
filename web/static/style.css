@@ -675,6 +675,13 @@ input[type="range"]::-moz-range-thumb {
   padding: 0.5rem 0;
 }
 
+.hw-source-hint {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: right;
+  padding: 0.15rem 0 0;
+}
+
 /* ── Battery bar ──────────────────────────────────────────────────────── */
 .battery-wrap {
   display: flex;

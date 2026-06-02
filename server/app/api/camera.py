@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..config import settings
 from ..storage.config_store import CameraConfigStore
+from ..storage.hardware_store import HardwareStateStore
 from ..storage.repository import FrameRepository
 
 router = APIRouter(tags=["camera"])
@@ -52,13 +53,19 @@ def _store() -> CameraConfigStore:
 
 @router.get("/api/camera/status")
 async def camera_status() -> Any:
+    hw = HardwareStateStore(settings.data_dir)
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(_camera_url("/status"))
             r.raise_for_status()
-            return r.json()
-    except Exception as exc:
-        raise HTTPException(503, f"camera offline: {exc}")
+            data = r.json()
+        hw.save(data)
+        return {**data, "source": "live"}
+    except Exception:
+        cached = hw.get()
+        if cached:
+            return {**cached, "source": "cached"}
+        return {"source": "offline"}
 
 
 @router.get("/api/camera/config")

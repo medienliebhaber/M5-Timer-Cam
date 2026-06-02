@@ -11,10 +11,16 @@ function switchTab(tab) {
     p.classList.toggle('active', p.id === `pane-${tab}`);
   });
   if (tab === 'live') {
+    stopGalleryWatch();
     startLivePolling();
   } else {
     stopLivePolling();
-    if (tab === 'gallery')  loadGallery();
+    if (tab === 'gallery') {
+      loadGallery();
+      startGalleryWatch();
+    } else {
+      stopGalleryWatch();
+    }
     if (tab === 'playback') initPlayback();
   }
 }
@@ -28,44 +34,46 @@ const liveImg     = document.getElementById('live-img');
 const statusBadge = document.getElementById('camera-status');
 const statusText  = document.getElementById('status-text');
 const liveTs      = document.getElementById('live-ts');
+let livePolling   = false;
 let liveTimer     = null;
 
-function pollLive() {
-  fetch(`/api/snapshot?t=${Date.now()}`)
-    .then(async r => {
-      if (!r.ok) throw new Error();
-      return {
-        blob: await r.blob(),
-        source: r.headers.get('X-Snapshot-Source') ?? 'live',
-        capturedAt: r.headers.get('X-Captured-At'),
-      };
-    })
-    .then(({ blob, source, capturedAt }) => {
-      const prev = liveImg.src;
-      liveImg.src = URL.createObjectURL(blob);
-      if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
-      setSnapshotSource(source);
-      liveTs.textContent = source === 'cached' && capturedAt
-        ? `Cached · ${formatTs(capturedAt)}`
-        : new Date().toLocaleTimeString();
-    })
-    .catch(() => setSnapshotSource('offline'));
+async function pollLive() {
+  if (!livePolling) return;
+  try {
+    const r = await fetch(`/api/snapshot?t=${Date.now()}`);
+    if (!r.ok) throw new Error(r.status);
+    const blob       = await r.blob();
+    const source     = r.headers.get('X-Snapshot-Source') ?? 'cached';
+    const capturedAt = r.headers.get('X-Captured-At');
+    const prev = liveImg.src;
+    liveImg.src = URL.createObjectURL(blob);
+    if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+    setSnapshotSource(source);
+    liveTs.textContent = source === 'cached' && capturedAt
+      ? `Cached · ${formatTs(capturedAt)}`
+      : new Date().toLocaleTimeString();
+  } catch {
+    setSnapshotSource('offline');
+  } finally {
+    if (livePolling) liveTimer = setTimeout(pollLive, 1000);
+  }
 }
 
 function setSnapshotSource(source) {
   statusBadge.className = `status ${source}`;
-  statusText.textContent = source === 'live' ? 'Live'
+  statusText.textContent = source === 'live'   ? 'Live'
     : source === 'cached' ? 'Cached frame'
     : 'Offline';
 }
 
 function startLivePolling() {
-  stopLivePolling();
+  if (livePolling) return;
+  livePolling = true;
   pollLive();
-  liveTimer = setInterval(pollLive, 1000);
 }
 function stopLivePolling() {
-  clearInterval(liveTimer);
+  livePolling = false;
+  clearTimeout(liveTimer);
   liveTimer = null;
 }
 
@@ -75,11 +83,13 @@ startLivePolling();
 const grid       = document.getElementById('gallery-grid');
 const emptyState = document.getElementById('gallery-empty');
 
-let currentFrames = [];
-let currentIndex  = -1;
-let galleryPage   = 1;
-let galleryTotal  = 0;
-const PER_PAGE    = 30;
+let currentFrames    = [];
+let currentIndex     = -1;
+let galleryPage      = 1;
+let galleryTotal     = 0;
+let galleryLatestId  = 0;
+let galleryWatchTimer = null;
+const PER_PAGE       = 30;
 
 async function loadGallery() {
   const from = document.getElementById('filter-from').value;
@@ -99,6 +109,8 @@ async function loadGallery() {
 
   galleryTotal  = data.total ?? 0;
   currentFrames = data.frames ?? [];
+  const newestId = currentFrames[0]?.id ?? 0;
+  if (newestId) galleryLatestId = Math.max(galleryLatestId, newestId);
 
   const totalPages = Math.max(1, Math.ceil(galleryTotal / PER_PAGE));
   document.getElementById('gallery-count').textContent =
@@ -145,6 +157,37 @@ document.getElementById('btn-clear').addEventListener('click', () => {
 document.getElementById('btn-refresh').addEventListener('click', () => loadGallery());
 document.getElementById('btn-prev').addEventListener('click', () => { galleryPage--; loadGallery(); });
 document.getElementById('btn-next').addEventListener('click', () => { galleryPage++; loadGallery(); });
+
+/* ── Gallery new-frame watcher ─────────────────────────────────────────── */
+async function watchGallery() {
+  try {
+    const r = await fetch('/api/frames?page=1&per_page=1');
+    if (!r.ok) return;
+    const d    = await r.json();
+    const latest = d.frames?.[0]?.id ?? 0;
+    if (galleryLatestId && latest > galleryLatestId) {
+      const hasFilter = document.getElementById('filter-from').value
+                     || document.getElementById('filter-to').value;
+      if (galleryPage === 1 && !hasFilter) {
+        loadGallery();
+      } else {
+        showToast('New frame captured — click Refresh to see it', 'info');
+      }
+    }
+    if (latest) galleryLatestId = Math.max(galleryLatestId, latest);
+  } catch { /* non-fatal */ }
+  if (activeTab === 'gallery') galleryWatchTimer = setTimeout(watchGallery, 15000);
+}
+
+function startGalleryWatch() {
+  stopGalleryWatch();
+  watchGallery();
+}
+
+function stopGalleryWatch() {
+  clearTimeout(galleryWatchTimer);
+  galleryWatchTimer = null;
+}
 
 /* ── Lightbox ──────────────────────────────────────────────────────────── */
 const lightbox   = document.getElementById('lightbox');
@@ -415,10 +458,14 @@ function closeSettings() {
 async function loadHwStatus() {
   const online  = document.getElementById('hw-online');
   const offline = document.getElementById('hw-offline');
+  const sourceEl = document.getElementById('hw-source');
   try {
     const r = await fetch('/api/camera/status');
     if (!r.ok) throw new Error();
     const d = await r.json();
+
+    if (d.source === 'offline') throw new Error();
+
     online.classList.remove('hidden');
     offline.classList.add('hidden');
 
@@ -431,6 +478,15 @@ async function loadHwStatus() {
       d.heap_free != null ? `${(d.heap_free / 1024).toFixed(0)} KB` : '—';
     document.getElementById('rssi-val').textContent =
       d.rssi != null ? `${d.rssi} dBm` : '—';
+
+    if (sourceEl) {
+      if (d.source === 'cached' && d.seen_at) {
+        sourceEl.textContent = `cached · ${formatTs(d.seen_at)}`;
+        sourceEl.classList.remove('hidden');
+      } else {
+        sourceEl.classList.add('hidden');
+      }
+    }
   } catch {
     online.classList.add('hidden');
     offline.classList.remove('hidden');
