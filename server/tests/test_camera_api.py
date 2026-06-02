@@ -122,10 +122,23 @@ def test_post_camera_power_off_forwards_to_live_device(client):
 
 def test_post_camera_power_off_returns_503_when_camera_offline(client):
     with patch("app.api.camera.httpx.AsyncClient") as async_client:
-        async_client.return_value.__aenter__.return_value.post = AsyncMock(
+        post = async_client.return_value.__aenter__.return_value.post = AsyncMock(
             side_effect=httpx.ConnectError("offline")
         )
 
         response = client.post("/api/camera/power-off")
 
     assert response.status_code == 503
+    post.assert_awaited_once()
+
+
+def test_post_camera_power_off_returns_503_when_camera_rejects_request(client):
+    with patch("app.api.camera.httpx.AsyncClient") as async_client:
+        post = async_client.return_value.__aenter__.return_value.post = AsyncMock(
+            return_value=_response(status_code=409)
+        )
+
+        response = client.post("/api/camera/power-off")
+
+    assert response.status_code == 503
+    post.assert_awaited_once()
