@@ -123,6 +123,9 @@ main { flex: 1; overflow: auto; }
 .btn-primary { background: var(--accent); color: #fff; border-color: transparent; }
 .btn-primary:hover { background: var(--accent-h); }
 
+.btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
+.btn-danger:hover { filter: brightness(1.08); }
+
 .btn-ghost { background: transparent; border-color: var(--border2); color: var(--text2); }
 .btn-ghost:hover { border-color: var(--muted); color: var(--text); }
 

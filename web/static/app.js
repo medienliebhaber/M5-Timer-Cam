@@ -635,6 +635,22 @@ document.getElementById('btn-save-config').addEventListener('click', async () =>
   }
 });
 
+/* ── Device power ─────────────────────────────────────────────────────── */
+document.getElementById('btn-power-off').addEventListener('click', async () => {
+  if (!confirm('Turn off scheduled captures until USB is reconnected or the hardware wake/reset button is pressed?')) return;
+  const btn = document.getElementById('btn-power-off');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/camera/power-off', { method: 'POST' });
+    if (!r.ok) throw new Error(`server error ${r.status}`);
+    closeSettings();
+    showToast('Device turned off — reconnect USB or press the hardware wake/reset button to resume scheduled captures', 'success');
+  } catch (err) {
+    showToast(`Power off failed: ${err.message}`, 'error');
+    btn.disabled = false;
+  }
+});
+
 /* ── Storage stats ─────────────────────────────────────────────────────── */
 async function loadStorageStats() {
   try {
