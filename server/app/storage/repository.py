@@ -36,6 +36,17 @@ class FrameRepository:
             return None
         return Frame(**dict(row))
 
+    def get_latest(self) -> Optional[Frame]:
+        with get_conn(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT * FROM frames ORDER BY captured_at DESC LIMIT 1"
+            ).fetchone()
+        return Frame(**dict(row)) if row else None
+
+    def count_frames(self) -> int:
+        with get_conn(self._db_path) as conn:
+            return conn.execute("SELECT COUNT(*) FROM frames").fetchone()[0]
+
     def list_frames(
         self,
         page: int = 1,

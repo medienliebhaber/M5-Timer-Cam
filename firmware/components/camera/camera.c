@@ -1,6 +1,8 @@
 #include "camera.h"
 #include "esp_camera.h"
 #include "esp_log.h"
+#include <string.h>
+#include <stdlib.h>
 
 static const char *TAG = "camera";
 
@@ -40,8 +42,16 @@ esp_err_t camera_init(void)
     esp_err_t err = esp_camera_init(&CAMERA_CONFIG);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "init failed: %s", esp_err_to_name(err));
+        return err;
     }
-    return err;
+
+    /* M5 Timer Camera X mounts the OV3660 upside-down */
+    sensor_t *s = esp_camera_sensor_get();
+    if (s) {
+        s->set_vflip(s, 1);
+        s->set_hmirror(s, 1);
+    }
+    return ESP_OK;
 }
 
 esp_err_t camera_capture(uint8_t **buf, size_t *len)

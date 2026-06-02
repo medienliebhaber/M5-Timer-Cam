@@ -1,12 +1,45 @@
 #include "http_client.h"
-#include "rtc.h"
+#include "bm8563.h"
+#include "nvs.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 #include "sdkconfig.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
-#include <stdio.h>
 #include <time.h>
 
 static const char *TAG = "http_client";
+
+#define NVS_NS      "m5cam"
+#define NVS_KEY_INT "interval"
+#define NVS_KEY_SLP "sleep_en"
+
+static void apply_config_header(esp_http_client_handle_t client,
+                                 const char *header, const char *nvs_key)
+{
+    char *val = NULL;
+    esp_http_client_get_header(client, header, &val);
+    if (!val || *val == '\0') return;
+
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) return;
+
+    if (strcmp(nvs_key, NVS_KEY_INT) == 0) {
+        int v = atoi(val);
+        if (v >= 1 && v <= 1440) {
+            nvs_set_i32(h, nvs_key, (int32_t)v);
+            ESP_LOGI(TAG, "config: interval=%d min", v);
+        }
+    } else if (strcmp(nvs_key, NVS_KEY_SLP) == 0) {
+        int32_t v = (*val == '1') ? 1 : 0;
+        nvs_set_i32(h, nvs_key, v);
+        ESP_LOGI(TAG, "config: sleep_enabled=%d", (int)v);
+    }
+
+    nvs_commit(h);
+    nvs_close(h);
+}
 
 esp_err_t http_client_post_frame(const uint8_t *buf, size_t len,
                                   const char *trigger)
@@ -15,17 +48,16 @@ esp_err_t http_client_post_frame(const uint8_t *buf, size_t len,
     snprintf(url, sizeof(url), "http://%s:%d/api/frames",
              CONFIG_M5CAM_SERVER_IP, CONFIG_M5CAM_SERVER_PORT);
 
-    /* ISO8601 timestamp from RTC */
     char ts[32] = "unknown";
     struct tm t;
-    if (rtc_get_time(&t) == ESP_OK) {
+    if (bm8563_get_time(&t) == ESP_OK) {
         strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", &t);
     }
 
     esp_http_client_config_t cfg = {
-        .url            = url,
-        .method         = HTTP_METHOD_POST,
-        .timeout_ms     = 10000,
+        .url        = url,
+        .method     = HTTP_METHOD_POST,
+        .timeout_ms = 10000,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
@@ -38,7 +70,10 @@ esp_err_t http_client_post_frame(const uint8_t *buf, size_t len,
     if (err == ESP_OK) {
         int status = esp_http_client_get_status_code(client);
         ESP_LOGI(TAG, "POST %s → %d", url, status);
-        if (status < 200 || status >= 300) {
+        if (status >= 200 && status < 300) {
+            apply_config_header(client, "X-Config-Interval", NVS_KEY_INT);
+            apply_config_header(client, "X-Config-Sleep",    NVS_KEY_SLP);
+        } else {
             err = ESP_FAIL;
         }
     } else {

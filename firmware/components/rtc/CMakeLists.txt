@@ -1,5 +1,5 @@
 idf_component_register(
     SRCS "rtc.c"
     INCLUDE_DIRS "include"
-    REQUIRES driver esp_sleep
+    REQUIRES driver esp_hw_support
 )

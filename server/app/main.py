@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .storage.db import init_db
-from .api import frames, snapshot, ws
+from .api import camera, frames, ota, snapshot, ws
 
 
 @asynccontextmanager
@@ -20,6 +20,8 @@ app = FastAPI(title="M5 TimerCam Server", lifespan=lifespan)
 
 app.include_router(frames.router)
 app.include_router(snapshot.router)
+app.include_router(ota.router)
+app.include_router(camera.router)
 app.include_router(ws.router)
 
 # Serve frontend at /

@@ -1,4 +1,4 @@
-#include "rtc.h"
+#include "bm8563.h"
 #include "driver/i2c.h"
 #include "driver/gpio.h"
 #include "esp_sleep.h"
@@ -20,7 +20,7 @@ static const char *TAG = "rtc";
 static uint8_t bcd2dec(uint8_t b) { return (b >> 4) * 10 + (b & 0x0F); }
 static uint8_t dec2bcd(uint8_t d) { return ((d / 10) << 4) | (d % 10); }
 
-esp_err_t rtc_init(void)
+esp_err_t bm8563_init(void)
 {
     /* Keep battery power on while MCU is active */
     gpio_config_t bat = {
@@ -45,7 +45,7 @@ esp_err_t rtc_init(void)
     return ESP_OK;
 }
 
-esp_err_t rtc_get_time(struct tm *t)
+esp_err_t bm8563_get_time(struct tm *t)
 {
     uint8_t reg = BM8563_REG_SEC;
     uint8_t data[7];
@@ -75,7 +75,7 @@ esp_err_t rtc_get_time(struct tm *t)
     return ESP_OK;
 }
 
-esp_err_t rtc_set_wake_alarm(int minutes_from_now)
+esp_err_t bm8563_set_wake_alarm(int minutes_from_now)
 {
     /* Use ESP32 internal timer for deep sleep (simpler than BM8563 alarm wiring).
      * The BM8563 keeps time during sleep; on wake we read it for timestamps. */

@@ -26,12 +26,6 @@ Open [http://localhost:8000](http://localhost:8000) for the UI.
 
 ## Configuration (`.env`)
 
-Copy `.env.example` to `.env` and fill in your values:
-
-```bash
-cp .env.example .env
-```
-
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CAMERA_IP` | `192.168.4.1` | Camera IP on your local network |
@@ -39,38 +33,51 @@ cp .env.example .env
 | `DATA_DIR` | `../data` | Root for images + SQLite DB |
 | `PORT` | `8000` | Server listen port |
 
+---
+
 ## API Reference
 
-### `POST /api/frames`
+### Frames
 
-Receive a JPEG from the camera. Called by firmware after each capture.
+#### `POST /api/frames`
+Ingest a JPEG from the camera. Called by firmware after each capture.
 
-**Headers:**
-- `Content-Type: image/jpeg`
-- `X-Captured-At: 2026-06-02T14:30:00Z` (ISO8601 UTC)
-- `X-Trigger: timer | test`
+**Request headers:**
+```
+Content-Type: image/jpeg
+X-Captured-At: 2026-06-02T14:30:00Z   (ISO8601 UTC)
+X-Trigger: timer | test | manual
+```
 
-**Response:** `201 Created`
+**Response `201`:**
 ```json
 { "id": 42, "filename": "2026/06/02/14-30-00_timer.jpg" }
 ```
 
+**Response headers** carry pending configuration for the camera to apply:
+```
+X-Config-Interval: 5       (minutes)
+X-Config-Sleep: 1          (1 = sleep enabled, 0 = stay awake)
+```
+
 ---
 
-### `GET /api/frames`
-
+#### `GET /api/frames`
 List stored frames, newest first.
 
 **Query params:**
-- `page` (int, default 1)
-- `per_page` (int, default 50)
-- `from` (ISO8601 date, optional)
-- `to` (ISO8601 date, optional)
 
-**Response:** `200 OK`
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `page` | int | 1 | Page number |
+| `per_page` | int | 50 | Results per page |
+| `from_dt` | ISO8601 string | — | Start of time range (inclusive) |
+| `to_dt` | ISO8601 string | — | End of time range (inclusive) |
+
+**Response `200`:**
 ```json
 {
-  "total": 123,
+  "total": 1072,
   "page": 1,
   "per_page": 50,
   "frames": [
@@ -89,39 +96,115 @@ List stored frames, newest first.
 
 ---
 
-### `GET /api/frames/{id}`
+#### `GET /api/frames/{id}`
+Serve the JPEG for a specific frame.
 
-Serve the JPEG file for a given frame ID.
-
-**Response:** `200 OK` with `Content-Type: image/jpeg`
-
----
-
-### `GET /api/snapshot`
-
-Pull a live JPEG from the camera right now. Proxies to `http://<CAMERA_IP>/snapshot`.
-
-**Response:** `200 OK` with `Content-Type: image/jpeg`
-
-Returns `503 Service Unavailable` if camera is unreachable.
+**Response `200`:** `image/jpeg`
 
 ---
 
-### `WS /ws/live`
+### Live snapshot
 
-WebSocket that pushes live JPEG frames as binary messages at ~1fps.
+#### `GET /api/snapshot`
+Returns the latest JPEG. Tries the live camera first (`GET /snapshot` on the camera); if the camera is unreachable (sleeping), falls back to the most recently stored frame.
 
-The server polls `GET /api/snapshot` internally and forwards each frame to all connected clients. If the camera goes offline, the WebSocket stays open and resumes when it comes back.
+**Response `200`:** `image/jpeg`  
+**Response `503`:** camera offline and no stored frames exist
 
 ---
 
-### `GET /`
+### WebSocket
 
-Serves `web/index.html`.
+#### `WS /ws/live`
+Pushes live JPEG frames as binary messages at ~1 fps. Sends the text `"offline"` when the camera is unreachable (keeps the socket alive). The UI does not use this endpoint — it polls `/api/snapshot` directly — but it is available for other clients.
+
+---
+
+### Camera management
+
+#### `GET /api/camera/status`
+Proxy to the camera's `GET /status` endpoint.
+
+**Response `200`:**
+```json
+{
+  "heap_free": 198432,
+  "heap_min": 154320,
+  "rssi": -62,
+  "battery_pct": 78,
+  "battery_mv": 4010
+}
+```
+
+**Response `503`:** camera offline
+
+---
+
+#### `GET /api/camera/config`
+Returns the current camera configuration. Uses live data from the camera if it is online; otherwise returns the last saved value from `data/camera_config.json`.
+
+**Response `200`:**
+```json
+{
+  "interval_minutes": 1,
+  "sleep_enabled": true,
+  "source": "live" | "cached"
+}
+```
+
+---
+
+#### `POST /api/camera/config`
+Save camera configuration. Persists to `data/camera_config.json` and attempts an immediate push to the camera's `POST /config` endpoint.
+
+**Request body:**
+```json
+{
+  "interval_minutes": 5,
+  "sleep_enabled": false
+}
+```
+
+Both fields are optional; omitted fields retain their current value.
+
+**Response `200`:**
+```json
+{ "status": "saved", "pushed_to_camera": true | false }
+```
+
+`pushed_to_camera: false` means the camera was offline — the new config will be delivered via `X-Config-*` headers on the camera's next frame POST.
+
+---
+
+#### `GET /api/storage`
+Server-side storage statistics.
+
+**Response `200`:**
+```json
+{
+  "frame_count": 1072,
+  "disk_used_bytes": 108891478,
+  "disk_used_mb": 103.8
+}
+```
+
+---
+
+### OTA firmware update
+
+#### `POST /api/ota`
+Receive a firmware `.bin` and forward it to the camera's `POST /ota` endpoint. The camera writes the binary to its inactive OTA partition, marks it bootable, and reboots.
+
+**Request:** `application/octet-stream` body (the compiled `.bin` file)  
+**Response `200`:** `{ "status": "ok", "message": "OK" }`  
+**Response `503`:** camera unreachable  
+**Response `502`:** camera rejected the firmware
+
+---
 
 ## Database Schema
 
-SQLite database at `data/camera.db`.
+SQLite at `data/camera.db`.
 
 ```sql
 CREATE TABLE frames (
@@ -129,34 +212,28 @@ CREATE TABLE frames (
     captured_at TEXT    NOT NULL,   -- ISO8601 UTC
     trigger     TEXT    NOT NULL,   -- "timer" | "test" | "manual"
     filename    TEXT    NOT NULL,   -- relative path under DATA_DIR/images/
-    filesize    INTEGER,            -- bytes
-    width       INTEGER,            -- pixels
-    height      INTEGER             -- pixels
+    filesize    INTEGER,
+    width       INTEGER,
+    height      INTEGER
 );
 
 CREATE INDEX idx_frames_captured_at ON frames (captured_at DESC);
 ```
+
+Pending camera config is stored as JSON at `data/camera_config.json`.
 
 ## Image File Layout
 
 ```
 data/
 └── images/
-    └── YYYY/
-        └── MM/
-            └── DD/
-                └── HH-MM-SS_{trigger}.jpg
+    └── YYYY/MM/DD/HH-MM-SS_{trigger}.jpg
 ```
-
-Example: `data/images/2026/06/02/14-30-00_timer.jpg`
 
 ## Running Tests
 
 ```bash
-cd server
-pytest                    # all tests
-pytest -v tests/          # verbose
-pytest tests/test_frames_api.py  # single file
+cd server && pytest
 ```
 
-Tests use an in-memory SQLite DB and a temporary directory for images — no real camera required.
+Tests use an in-memory SQLite DB and a temp directory — no real camera required.

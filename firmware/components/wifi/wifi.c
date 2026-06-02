@@ -20,6 +20,8 @@ static void event_handler(void *arg, esp_event_base_t base,
                            int32_t id, void *data)
 {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_event_sta_disconnected_t *disc = (wifi_event_sta_disconnected_t *)data;
+        ESP_LOGW(TAG, "disconnected, reason=%d", disc ? disc->reason : -1);
         if (s_retry < MAX_RETRY) {
             esp_wifi_connect();
             s_retry++;

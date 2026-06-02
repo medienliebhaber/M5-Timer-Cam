@@ -4,9 +4,10 @@ from typing import Optional
 
 import aiofiles
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from ..config import settings
+from ..storage.config_store import CameraConfigStore
 from ..storage.repository import FrameRepository
 
 router = APIRouter(prefix="/api/frames", tags=["frames"])
@@ -61,7 +62,15 @@ async def ingest_frame(
         width=width,
         height=height,
     )
-    return {"id": frame.id, "filename": rel}
+    cfg = CameraConfigStore(settings.data_dir).get()
+    return JSONResponse(
+        status_code=201,
+        content={"id": frame.id, "filename": rel},
+        headers={
+            "X-Config-Interval": str(cfg.get("interval_minutes", 1)),
+            "X-Config-Sleep": "1" if cfg.get("sleep_enabled", True) else "0",
+        },
+    )
 
 
 @router.get("")
