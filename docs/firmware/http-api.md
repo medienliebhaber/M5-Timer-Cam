@@ -61,6 +61,12 @@ Apply image settings to the real OV3660 sensor without saving them to NVS, then
 capture and return a fresh `image/jpeg`. The web UI uses this endpoint through
 the server proxy while the camera is awake.
 
+## `POST /power-off`
+
+Disable scheduled wake, release GPIO33, and enter timerless ESP32 deep sleep.
+The camera remains inactive until USB is unplugged and reconnected or a
+hardware wake/reset occurs.
+
 ## `POST /ota`
 
 Write an `application/octet-stream` firmware binary to the inactive OTA

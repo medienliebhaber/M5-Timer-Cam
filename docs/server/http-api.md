@@ -129,6 +129,12 @@ Apply a complete image configuration temporarily on the live camera and return
 a newly captured `image/jpeg`. This endpoint does not save server-side config.
 It returns `503` when the camera is sleeping or unreachable.
 
+### `POST /api/camera/power-off`
+
+Forward an immediate indefinite shutdown to the camera's `POST /power-off`
+endpoint. The command is not persisted or retried. Returns `503` when the
+camera is unreachable.
+
 ### `GET /api/storage`
 
 Return the number of stored frames and JPEG disk usage.

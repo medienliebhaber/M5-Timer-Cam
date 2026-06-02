@@ -60,6 +60,11 @@ The BM8563 also retains wall-clock time so captured images can be timestamped
 after wake. The ESP32 deep-sleep timer is also armed as a fallback when USB
 power keeps the ESP32 running after GPIO33 is released.
 
+Manual web UI shutdown is distinct from scheduled sleep: it disables the
+BM8563 countdown timer and stale timer interrupt state, releases GPIO33, and
+enters ESP32 timerless deep sleep. The board remains inactive until USB is
+unplugged and reconnected or a hardware wake/reset occurs.
+
 When battery voltage exceeds 4.1 V, the firmware assumes USB charging and stays
 awake.
 

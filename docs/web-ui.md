@@ -65,7 +65,7 @@ Toasts appear for load errors, empty results, and successful loads.
 
 ## Settings modal
 
-Opened with the ⚙ gear icon. Three sections:
+Opened with the ⚙ gear icon. Four sections:
 
 ### Camera Hardware
 Live hardware telemetry fetched from `GET /api/camera/status`.
@@ -102,6 +102,11 @@ Config**. Closing the modal without saving restores the last saved image
 settings when the camera is reachable.
 
 > **Sleep & USB:** When the deep sleep toggle is off, or when the camera detects USB charging (battery voltage > 4.1 V), it runs an awake loop — WiFi and HTTP server stay up, frames are captured at the configured interval without entering deep sleep.
+
+### Device Power
+**Turn Off Device** asks for confirmation, then requests an immediate shutdown.
+Scheduled captures stop until USB is unplugged and reconnected or a hardware
+wake/reset occurs. The request fails when the camera is offline.
 
 ### Server Storage
 Fetched from `GET /api/storage` on modal open.

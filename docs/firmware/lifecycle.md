@@ -20,6 +20,11 @@ The BM8563 retains wall-clock time for capture timestamps. Its timer interrupt
 powers the board back on after the configured interval when battery-powered.
 The ESP32 deep-sleep timer wakes the board when USB power remains connected.
 
+Manual web UI shutdown is distinct from scheduled sleep. It disables the
+BM8563 countdown timer and stale timer interrupt state, releases GPIO33, and
+enters ESP32 timerless deep sleep. The camera remains inactive until USB is
+unplugged and reconnected or a hardware wake/reset occurs.
+
 ## Awake Mode
 
 The camera stays awake when runtime sleep is disabled or USB charging is
