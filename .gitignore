@@ -1,0 +1,28 @@
+# Runtime data — never commit
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+*.egg-info/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# ESP-IDF build artifacts
+firmware/build/
+firmware/sdkconfig
+firmware/managed_components/
+firmware/.idf_cmake_list*
+firmware/dependencies.lock
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/settings.json
+*.swp

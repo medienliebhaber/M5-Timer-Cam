@@ -1,0 +1,41 @@
+menu "M5 TimerCam Configuration"
+
+    config M5CAM_WIFI_SSID
+        string "WiFi SSID"
+        default ""
+        help
+            Your home WiFi network name.
+
+    config M5CAM_WIFI_PASSWORD
+        string "WiFi Password"
+        default ""
+        help
+            Your home WiFi password.
+
+    config M5CAM_SERVER_IP
+        string "Server IP"
+        default "192.168.1.100"
+        help
+            IP address of the machine running the FastAPI server.
+
+    config M5CAM_SERVER_PORT
+        int "Server Port"
+        default 8000
+        help
+            Port of the FastAPI server.
+
+    config M5CAM_CAPTURE_INTERVAL_MINUTES
+        int "Capture interval (minutes)"
+        default 5
+        range 1 1440
+        help
+            How often to wake from deep sleep and capture a frame.
+
+    config M5CAM_TEST_MODE
+        bool "Enable test mode (no deep sleep)"
+        default n
+        help
+            In test mode the device captures every 2 seconds without
+            entering deep sleep. Useful for initial setup and pipeline testing.
+
+endmenu

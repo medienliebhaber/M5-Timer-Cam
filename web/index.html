@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>M5 Timer Camera</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>M5 Timer Camera</h1>
+    <nav>
+      <button id="tab-live" class="tab active" data-tab="live">Live</button>
+      <button id="tab-gallery" class="tab" data-tab="gallery">Gallery</button>
+    </nav>
+    <span id="camera-status" class="status offline">Camera offline</span>
+  </header>
+
+  <main>
+    <!-- Live tab -->
+    <section id="pane-live" class="pane active">
+      <div class="live-frame">
+        <img id="live-img" src="" alt="Live feed" />
+        <p class="hint">Polling camera every second</p>
+      </div>
+    </section>
+
+    <!-- Gallery tab -->
+    <section id="pane-gallery" class="pane">
+      <div class="gallery-controls">
+        <label>From <input type="date" id="filter-from"></label>
+        <label>To <input type="date" id="filter-to"></label>
+        <button id="btn-filter">Filter</button>
+        <span id="gallery-count"></span>
+      </div>
+      <div id="gallery-grid" class="grid"></div>
+      <div class="pagination">
+        <button id="btn-prev" disabled>← Prev</button>
+        <span id="page-info">Page 1</span>
+        <button id="btn-next">Next →</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Lightbox -->
+  <div id="lightbox" class="lightbox hidden">
+    <button id="lightbox-close">✕</button>
+    <img id="lightbox-img" src="" alt="">
+    <div id="lightbox-meta"></div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
