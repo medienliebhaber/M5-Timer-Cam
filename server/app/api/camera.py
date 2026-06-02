@@ -120,6 +120,17 @@ async def preview_camera_config(config: ImageConfig) -> Response:
         raise HTTPException(503, f"camera offline: {exc}")
 
 
+@router.post("/api/camera/power-off")
+async def power_off_camera() -> Any:
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.post(_camera_url("/power-off"))
+            r.raise_for_status()
+            return r.json()
+    except Exception as exc:
+        raise HTTPException(503, f"camera power off failed: {exc}")
+
+
 @router.get("/api/storage")
 async def storage_stats() -> Any:
     repo = FrameRepository(settings.db_path)
