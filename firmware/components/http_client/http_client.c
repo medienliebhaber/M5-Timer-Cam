@@ -31,6 +31,7 @@ typedef struct {
     char sharpness[4];
     char hmirror[4];
     char vflip[4];
+    char power_off[4];
 } resp_cfg_t;
 
 static esp_err_t http_event_handler(esp_http_client_event_t *evt)
@@ -50,6 +51,7 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
     else if (strcasecmp(k, "X-Config-Sharpness")   == 0) strlcpy(r->sharpness,  v, sizeof(r->sharpness));
     else if (strcasecmp(k, "X-Config-Hmirror")     == 0) strlcpy(r->hmirror,    v, sizeof(r->hmirror));
     else if (strcasecmp(k, "X-Config-Vflip")       == 0) strlcpy(r->vflip,      v, sizeof(r->vflip));
+    else if (strcasecmp(k, "X-Config-Power-Off")   == 0) strlcpy(r->power_off,  v, sizeof(r->power_off));
 
     return ESP_OK;
 }
@@ -85,6 +87,11 @@ static void apply_nvs_bool(const char *val, const char *key)
 
 static void apply_resp_config(const resp_cfg_t *r)
 {
+    if (r->power_off[0] == '1') {
+        ESP_LOGI(TAG, "power off requested by server, powering off now");
+        bm8563_power_off();
+    }
+
     apply_nvs_int(r->interval, NVS_KEY_INT, 1, 1440);
     apply_nvs_bool(r->sleep, NVS_KEY_SLP);
 

@@ -441,7 +441,7 @@ updatePbButtons();
 /* ── Settings modal ────────────────────────────────────────────────────── */
 const settingsModal = document.getElementById('settings-modal');
 let settingsSession = 0;
-let powerOffPending = false;
+let isPowerOffInFlight = false;
 
 document.getElementById('btn-settings').addEventListener('click', openSettings);
 document.getElementById('btn-settings-close').addEventListener('click', closeSettings);
@@ -449,7 +449,7 @@ document.querySelector('.modal-backdrop').addEventListener('click', closeSetting
 
 function openSettings() {
   settingsSession += 1;
-  document.getElementById('btn-power-off').disabled = powerOffPending;
+  document.getElementById('btn-power-off').disabled = isPowerOffInFlight;
   settingsModal.classList.remove('hidden');
   loadHwStatus();
   loadStorageStats();
@@ -465,13 +465,25 @@ async function loadHwStatus() {
   const online  = document.getElementById('hw-online');
   const offline = document.getElementById('hw-offline');
   const sourceEl = document.getElementById('hw-source');
+  const pendingBox = document.getElementById('power-off-pending-box');
+  
+  let d = null;
   try {
     const r = await fetch('/api/camera/status');
-    if (!r.ok) throw new Error();
-    const d = await r.json();
+    if (r.ok) {
+      d = await r.json();
+    }
+  } catch (err) {
+    // ignore
+  }
 
-    if (d.source === 'offline') throw new Error();
+  const isPending = d ? !!d.power_off_pending : false;
+  if (pendingBox) {
+    if (isPending) pendingBox.classList.remove('hidden');
+    else pendingBox.classList.add('hidden');
+  }
 
+  if (d && d.source !== 'offline') {
     online.classList.remove('hidden');
     offline.classList.add('hidden');
 
@@ -493,9 +505,10 @@ async function loadHwStatus() {
         sourceEl.classList.add('hidden');
       }
     }
-  } catch {
+  } else {
     online.classList.add('hidden');
     offline.classList.remove('hidden');
+    if (sourceEl) sourceEl.classList.add('hidden');
   }
 }
 
@@ -643,22 +656,47 @@ document.getElementById('btn-save-config').addEventListener('click', async () =>
 
 /* ── Device power ─────────────────────────────────────────────────────── */
 document.getElementById('btn-power-off').addEventListener('click', async () => {
-  if (powerOffPending) return;
+  if (isPowerOffInFlight) return;
   if (!confirm('Turn off scheduled captures until USB is reconnected or the hardware wake/reset button is pressed?')) return;
   const btn = document.getElementById('btn-power-off');
   const session = settingsSession;
-  powerOffPending = true;
+  isPowerOffInFlight = true;
   btn.disabled = true;
   try {
     const r = await fetch('/api/camera/power-off', { method: 'POST' });
     if (!r.ok) throw new Error(`server error ${r.status}`);
-    powerOffPending = false;
-    if (settingsSession === session) settingsModal.classList.add('hidden');
-    else btn.disabled = false;
-    showToast('Device turned off — reconnect USB or press the hardware wake/reset button to resume scheduled captures', 'success');
+    const d = await r.json();
+    isPowerOffInFlight = false;
+    
+    if (d.status === 'powered_off') {
+      if (settingsSession === session) settingsModal.classList.add('hidden');
+      else btn.disabled = false;
+      showToast('Device turned off — reconnect USB or press the hardware wake/reset button to resume scheduled captures', 'success');
+    } else if (d.status === 'pending') {
+      btn.disabled = false;
+      showToast('Device offline — power-off buffered; it will apply when the device next wakes', 'info');
+      const pendingBox = document.getElementById('power-off-pending-box');
+      if (pendingBox) pendingBox.classList.remove('hidden');
+    }
   } catch (err) {
     showToast(`Power off failed: ${err.message}`, 'error');
-    powerOffPending = false;
+    isPowerOffInFlight = false;
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('btn-cancel-power-off').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-cancel-power-off');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/camera/power-off', { method: 'DELETE' });
+    if (!r.ok) throw new Error(`server error ${r.status}`);
+    showToast('Power-off cancelled', 'success');
+    const pendingBox = document.getElementById('power-off-pending-box');
+    if (pendingBox) pendingBox.classList.add('hidden');
+  } catch (err) {
+    showToast(`Cancel failed: ${err.message}`, 'error');
+  } finally {
     btn.disabled = false;
   }
 });

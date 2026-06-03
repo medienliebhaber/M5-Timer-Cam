@@ -107,6 +107,9 @@ def test_post_camera_preview_returns_503_when_camera_offline(client):
 
 
 def test_post_camera_power_off_forwards_to_live_device(client):
+    from app.config import settings
+    from app.storage.power_state import PowerStateStore
+
     with patch("app.api.camera.httpx.AsyncClient") as async_client:
         post = async_client.return_value.__aenter__.return_value.post = AsyncMock(
             return_value=_response(json_data={"status": "powering_off"})
@@ -115,12 +118,19 @@ def test_post_camera_power_off_forwards_to_live_device(client):
         response = client.post("/api/camera/power-off")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "powering_off"}
+    assert response.json() == {"status": "powered_off"}
     post.assert_awaited_once()
     assert post.await_args.args[0].endswith("/power-off")
+    
+    # Verify pending state was cleared after successful power off
+    store = PowerStateStore(settings.data_dir)
+    assert store.get()["power_off_pending"] is False
 
 
-def test_post_camera_power_off_returns_503_when_camera_offline(client):
+def test_post_camera_power_off_buffers_when_camera_offline(client):
+    from app.config import settings
+    from app.storage.power_state import PowerStateStore
+
     with patch("app.api.camera.httpx.AsyncClient") as async_client:
         post = async_client.return_value.__aenter__.return_value.post = AsyncMock(
             side_effect=httpx.ConnectError("offline")
@@ -128,11 +138,19 @@ def test_post_camera_power_off_returns_503_when_camera_offline(client):
 
         response = client.post("/api/camera/power-off")
 
-    assert response.status_code == 503
+    assert response.status_code == 200
+    assert response.json() == {"status": "pending"}
     post.assert_awaited_once()
+    
+    # Verify pending state is True
+    store = PowerStateStore(settings.data_dir)
+    assert store.get()["power_off_pending"] is True
 
 
-def test_post_camera_power_off_returns_503_when_camera_rejects_request(client):
+def test_post_camera_power_off_buffers_when_camera_rejects_request(client):
+    from app.config import settings
+    from app.storage.power_state import PowerStateStore
+
     with patch("app.api.camera.httpx.AsyncClient") as async_client:
         post = async_client.return_value.__aenter__.return_value.post = AsyncMock(
             return_value=_response(status_code=409)
@@ -140,5 +158,71 @@ def test_post_camera_power_off_returns_503_when_camera_rejects_request(client):
 
         response = client.post("/api/camera/power-off")
 
-    assert response.status_code == 503
+    assert response.status_code == 200
+    assert response.json() == {"status": "pending"}
     post.assert_awaited_once()
+    
+    store = PowerStateStore(settings.data_dir)
+    assert store.get()["power_off_pending"] is True
+
+
+def test_delete_camera_power_off_clears_pending(client):
+    from app.config import settings
+    from app.storage.power_state import PowerStateStore
+
+    store = PowerStateStore(settings.data_dir)
+    store.set_pending()
+    assert store.get()["power_off_pending"] is True
+
+    response = client.delete("/api/camera/power-off")
+    assert response.status_code == 200
+    assert response.json() == {"status": "cleared"}
+    assert store.get()["power_off_pending"] is False
+
+
+def test_get_camera_status_includes_power_off_pending(client):
+    from app.config import settings
+    from app.storage.power_state import PowerStateStore
+
+    store = PowerStateStore(settings.data_dir)
+    store.clear()
+    
+    # When not pending
+    with patch("app.api.camera.httpx.AsyncClient") as async_client:
+        async_client.return_value.__aenter__.return_value.get = AsyncMock(
+            side_effect=httpx.ConnectError("offline")
+        )
+        response = client.get("/api/camera/status")
+    assert response.status_code == 200
+    assert response.json()["power_off_pending"] is False
+
+    # When pending
+    store.set_pending()
+    with patch("app.api.camera.httpx.AsyncClient") as async_client:
+        async_client.return_value.__aenter__.return_value.get = AsyncMock(
+            side_effect=httpx.ConnectError("offline")
+        )
+        response = client.get("/api/camera/status")
+    assert response.status_code == 200
+    assert response.json()["power_off_pending"] is True
+
+
+def test_post_frames_delivers_header_and_clears_pending(client):
+    from app.config import settings
+    from app.storage.power_state import PowerStateStore
+
+    store = PowerStateStore(settings.data_dir)
+    store.set_pending()
+
+    # Ingest a frame while pending
+    SAMPLE_JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
+    response = client.post("/api/frames", content=SAMPLE_JPEG)
+    
+    assert response.status_code == 201
+    assert response.headers.get("X-Config-Power-Off") == "1"
+    assert store.get()["power_off_pending"] is False
+
+    # Ingest another frame when not pending
+    response = client.post("/api/frames", content=SAMPLE_JPEG)
+    assert response.status_code == 201
+    assert "X-Config-Power-Off" not in response.headers

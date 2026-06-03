@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..config import settings
 from ..storage.config_store import CameraConfigStore
 from ..storage.hardware_store import HardwareStateStore
+from ..storage.power_state import PowerStateStore
 from ..storage.repository import FrameRepository
 
 router = APIRouter(tags=["camera"])
@@ -54,18 +55,24 @@ def _store() -> CameraConfigStore:
 @router.get("/api/camera/status")
 async def camera_status() -> Any:
     hw = HardwareStateStore(settings.data_dir)
+    power_store = PowerStateStore(settings.data_dir)
+    power_state = power_store.get()
+    pending_fields = {
+        "power_off_pending": power_state["power_off_pending"],
+        "power_off_requested_at": power_state["requested_at"],
+    }
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(_camera_url("/status"))
             r.raise_for_status()
             data = r.json()
         hw.save(data)
-        return {**data, "source": "live"}
+        return {**data, **pending_fields, "source": "live"}
     except Exception:
         cached = hw.get()
         if cached:
-            return {**cached, "source": "cached"}
-        return {"source": "offline"}
+            return {**cached, **pending_fields, "source": "cached"}
+        return {"source": "offline", **pending_fields}
 
 
 @router.get("/api/camera/config")
@@ -122,13 +129,23 @@ async def preview_camera_config(config: ImageConfig) -> Response:
 
 @router.post("/api/camera/power-off")
 async def power_off_camera() -> Any:
+    power_store = PowerStateStore(settings.data_dir)
+    power_store.set_pending()
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.post(_camera_url("/power-off"))
             r.raise_for_status()
-            return r.json()
-    except Exception as exc:
-        raise HTTPException(503, f"camera power off failed: {exc}")
+        power_store.clear()
+        return {"status": "powered_off"}
+    except Exception:
+        return {"status": "pending"}
+
+
+@router.delete("/api/camera/power-off")
+async def cancel_power_off_camera() -> Any:
+    power_store = PowerStateStore(settings.data_dir)
+    power_store.clear()
+    return {"status": "cleared"}
 
 
 @router.get("/api/storage")
