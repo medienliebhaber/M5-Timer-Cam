@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from ..config import settings
 from ..storage.config_store import CameraConfigStore
+from ..storage.power_state import PowerStateStore
 from ..storage.repository import FrameRepository
 
 router = APIRouter(prefix="/api/frames", tags=["frames"])
@@ -70,21 +71,30 @@ async def ingest_frame(
         height=height,
     )
     cfg = CameraConfigStore(settings.data_dir).get()
+    power_store = PowerStateStore(settings.data_dir)
+    power_state = power_store.get()
+
+    headers = {
+        "X-Config-Interval": str(cfg.get("interval_minutes", 1)),
+        "X-Config-Sleep": "1" if cfg.get("sleep_enabled", True) else "0",
+        "X-Config-Framesize": str(cfg.get("framesize", "UXGA")),
+        "X-Config-Quality": str(cfg.get("quality", 12)),
+        "X-Config-Brightness": str(cfg.get("brightness", 0)),
+        "X-Config-Contrast": str(cfg.get("contrast", 0)),
+        "X-Config-Saturation": str(cfg.get("saturation", 0)),
+        "X-Config-Sharpness": str(cfg.get("sharpness", 0)),
+        "X-Config-Hmirror": "1" if cfg.get("hmirror", True) else "0",
+        "X-Config-Vflip": "1" if cfg.get("vflip", True) else "0",
+    }
+
+    if power_state.get("power_off_pending"):
+        headers["X-Config-Power-Off"] = "1"
+        power_store.clear()
+
     return JSONResponse(
         status_code=201,
         content={"id": frame.id, "filename": rel},
-        headers={
-            "X-Config-Interval": str(cfg.get("interval_minutes", 1)),
-            "X-Config-Sleep": "1" if cfg.get("sleep_enabled", True) else "0",
-            "X-Config-Framesize": str(cfg.get("framesize", "UXGA")),
-            "X-Config-Quality": str(cfg.get("quality", 12)),
-            "X-Config-Brightness": str(cfg.get("brightness", 0)),
-            "X-Config-Contrast": str(cfg.get("contrast", 0)),
-            "X-Config-Saturation": str(cfg.get("saturation", 0)),
-            "X-Config-Sharpness": str(cfg.get("sharpness", 0)),
-            "X-Config-Hmirror": "1" if cfg.get("hmirror", True) else "0",
-            "X-Config-Vflip": "1" if cfg.get("vflip", True) else "0",
-        },
+        headers=headers,
     )
 
 

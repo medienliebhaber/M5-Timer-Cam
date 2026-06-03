@@ -347,6 +347,10 @@
           <div class="settings-section-hdr">Device Power</div>
           <p class="settings-hint">Turns off scheduled captures until USB is reconnected or the hardware wake/reset button is pressed.</p>
           <button id="btn-power-off" class="btn btn-danger" style="width:100%">Turn Off Device</button>
+          <div id="power-off-pending-box" class="hidden" style="margin-top: 0.5rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); padding: 0.50rem; border-radius: 6px; font-size: 0.75rem; color: #ef4444;">
+            <span>Power-off pending — applies when the device next wakes</span>
+            <button id="btn-cancel-power-off" class="btn btn-ghost" style="padding: 0.25rem 0.5rem; font-size: 0.7rem; border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; height: auto; min-height: auto; line-height: 1;">Cancel</button>
+          </div>
         </div>
 
         <!-- Server storage -->
