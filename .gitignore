@@ -26,3 +26,4 @@ firmware/dependencies.lock
 # Editor
 .vscode/settings.json
 *.swp
+M5-Timer-Cam.code-workspace
