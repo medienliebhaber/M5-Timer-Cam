@@ -7,4 +7,3 @@ void      http_server_stop(void);
 
 /* Camera config — reads from NVS, falls back to compile-time defaults */
 int  cam_config_get_interval(void);
-bool cam_config_get_sleep_enabled(void);

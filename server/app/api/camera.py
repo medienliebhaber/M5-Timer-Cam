@@ -33,7 +33,6 @@ class CameraConfigUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     interval_minutes: int | None = Field(default=None, ge=1, le=1440)
-    sleep_enabled: bool | None = None
     framesize: FrameSize | None = None
     quality: int | None = Field(default=None, ge=0, le=63)
     brightness: int | None = Field(default=None, ge=-3, le=3)

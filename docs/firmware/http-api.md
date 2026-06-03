@@ -31,7 +31,6 @@ Return runtime camera settings stored in NVS.
 ```json
 {
   "interval_minutes": 5,
-  "sleep_enabled": true,
   "framesize": "UXGA",
   "quality": 12,
   "brightness": 0,
@@ -51,7 +50,7 @@ to NVS. The interval range is 1 to 1440 minutes.
 ```json
 {
   "interval_minutes": 5,
-  "sleep_enabled": false
+  "quality": 10
 }
 ```
 

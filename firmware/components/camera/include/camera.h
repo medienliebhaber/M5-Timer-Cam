@@ -15,7 +15,11 @@ typedef struct {
     bool vflip;
 } camera_image_config_t;
 
-esp_err_t camera_init(void);
+/* Framebuffer counts: one-shot battery capture vs. awake streaming. */
+#define FB_COUNT_ONESHOT 1
+#define FB_COUNT_STREAM  2
+
+esp_err_t camera_init(uint8_t fb_count);
 
 /* Capture a JPEG. Caller must call camera_release() when done. */
 esp_err_t camera_capture(uint8_t **buf, size_t *len);

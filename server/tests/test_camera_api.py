@@ -36,7 +36,6 @@ def test_get_camera_config_returns_image_defaults_when_camera_offline(client):
     assert response.status_code == 200
     assert response.json() == {
         "interval_minutes": 1,
-        "sleep_enabled": True,
         **IMAGE_DEFAULTS,
         "source": "cached",
     }

@@ -76,7 +76,6 @@ async def ingest_frame(
 
     headers = {
         "X-Config-Interval": str(cfg.get("interval_minutes", 1)),
-        "X-Config-Sleep": "1" if cfg.get("sleep_enabled", True) else "0",
         "X-Config-Framesize": str(cfg.get("framesize", "UXGA")),
         "X-Config-Quality": str(cfg.get("quality", 12)),
         "X-Config-Brightness": str(cfg.get("brightness", 0)),

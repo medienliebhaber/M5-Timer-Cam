@@ -5,16 +5,28 @@
 On boot the firmware initializes NVS, the BM8563 clock interface, the camera,
 and the status LED.
 
-## Scheduled Sleep Mode
+USB power presence is the only switch between the two operating modes. Charging
+is inferred from battery voltage above 4.1 V. There is no runtime sleep toggle:
+plug in USB to keep the device awake and interactive; on battery it always
+captures once and powers off.
 
-When test mode is disabled and runtime sleep is enabled:
+## Battery Mode (USB disconnected)
+
+When test mode is disabled and USB is not connected:
 
 1. Connect to WiFi.
-2. Capture a JPEG and post it to the server.
-3. Apply runtime configuration returned in `X-Config-*` response headers.
-4. Start the camera HTTP server for five seconds.
+2. Initialize the camera with a single framebuffer (`FB_COUNT_ONESHOT`). The
+   sensor is powered on only after WiFi associates, not during the connect
+   window.
+3. Capture a JPEG and post it to the server.
+4. Apply runtime configuration returned in `X-Config-*` response headers
+   (including a server-requested power-off).
 5. Configure the BM8563 countdown timer and the ESP32 USB-power fallback timer.
 6. Release battery hold on GPIO33 and enter deep sleep.
+
+There is no live HTTP-server window on battery. Settings changed from the web UI
+are stashed server-side and delivered to the camera as `X-Config-*` headers on
+its next scheduled wake.
 
 The BM8563 retains wall-clock time for capture timestamps. Its timer interrupt
 powers the board back on after the configured interval when battery-powered.
@@ -25,14 +37,15 @@ BM8563 countdown timer and stale timer interrupt state, releases GPIO33, and
 enters ESP32 timerless deep sleep. The camera remains inactive until USB is
 unplugged and reconnected or a hardware wake/reset occurs.
 
-## Awake Mode
+## Awake Mode (USB connected)
 
-The camera stays awake when runtime sleep is disabled or USB charging is
-inferred from battery voltage above 4.1 V. It keeps WiFi and the camera HTTP
-server available and captures at the configured interval.
+When USB charging is inferred, the camera never sleeps. It initializes the
+camera with two framebuffers (`FB_COUNT_STREAM`) for smooth streaming, keeps
+WiFi and the camera HTTP server available, and captures at the configured
+interval. The web UI can poll `/snapshot` (~1×/s) for live view.
 
-If sleep is re-enabled after USB is disconnected, the firmware restarts and
-returns to the scheduled sleep flow.
+If USB is disconnected while awake, the firmware restarts and returns to the
+battery power-off flow.
 
 ## Test Mode
 

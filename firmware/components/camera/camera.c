@@ -13,7 +13,8 @@ static const char *TAG = "camera";
 
 static SemaphoreHandle_t s_camera_mutex;
 
-/* OV3660 GPIO map for M5 Timer Camera X */
+/* OV3660 GPIO map for M5 Timer Camera X.
+ * fb_count is overridden per call in camera_init() (one-shot vs. streaming). */
 static const camera_config_t CAMERA_CONFIG = {
     .pin_pwdn     = -1,
     .pin_reset    = 15,
@@ -193,11 +194,14 @@ esp_err_t camera_image_config_get(camera_image_config_t *config)
     return ESP_OK;
 }
 
-esp_err_t camera_init(void)
+esp_err_t camera_init(uint8_t fb_count)
 {
     s_camera_mutex = xSemaphoreCreateMutex();
     if (!s_camera_mutex) return ESP_ERR_NO_MEM;
-    esp_err_t err = esp_camera_init(&CAMERA_CONFIG);
+
+    camera_config_t hw_cfg = CAMERA_CONFIG;
+    hw_cfg.fb_count = fb_count;
+    esp_err_t err = esp_camera_init(&hw_cfg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "init failed: %s", esp_err_to_name(err));
         return err;

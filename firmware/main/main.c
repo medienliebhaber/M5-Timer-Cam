@@ -2,6 +2,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_sleep.h"
 #include "nvs_flash.h"
 #include "driver/adc.h"
 
@@ -23,9 +24,17 @@ static int battery_mv(void)
     return (int)((float)raw * 4900.0f / 4095.0f);
 }
 
-/* Heuristic: if battery voltage > 4.10 V the device is likely charging via USB */
+/* True if USB is powering the board.
+ *
+ * Primary signal: if the ESP32 woke from its own deep-sleep timer, GPIO33
+ * (BAT_HOLD) was already released.  On battery the board would have lost all
+ * power at that point, so surviving the sleep means USB is keeping us alive.
+ * Fallback for fresh power-on: battery voltage above 4.10 V implies charging. */
 static bool usb_likely_connected(void)
 {
+    if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) {
+        return true;
+    }
     return battery_mv() > 4100;
 }
 
@@ -55,25 +64,41 @@ static void capture_and_post(const char *trigger)
     camera_release(buf);
 }
 
-/* ── Awake loop: used when sleep is disabled or USB is connected ─────── */
+/* ── Awake loop: used while USB power is connected ──────────────────────── */
 static void run_awake_loop(int interval_minutes)
 {
-    ESP_LOGI(TAG, "awake mode — interval %d min (sleep disabled/USB)", interval_minutes);
+    ESP_LOGI(TAG, "awake mode — interval %d min (USB connected)", interval_minutes);
     http_server_start();
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS((uint32_t)interval_minutes * 60 * 1000));
 
-        /* Re-read config each cycle so live updates take effect */
+        /* Re-read interval each cycle so live updates take effect */
         interval_minutes = cam_config_get_interval();
-        if (!cam_config_get_sleep_enabled() || usb_likely_connected()) {
+        if (usb_likely_connected()) {
             capture_and_post("timer");
         } else {
-            /* Sleep re-enabled and USB disconnected — restart to apply */
-            ESP_LOGI(TAG, "sleep re-enabled — rebooting");
+            /* USB unplugged — restart into the battery power-off flow */
+            ESP_LOGI(TAG, "USB disconnected — rebooting to battery mode");
             esp_restart();
         }
     }
+}
+
+/* ── Arm the RTC wake timer and power off (battery + WiFi-fail paths) ────── */
+static void enter_scheduled_sleep(void)
+{
+    int interval = cam_config_get_interval();
+    ESP_LOGI(TAG, "entering deep sleep for %d minutes", interval);
+    led_blink(LED_SLEEPING);
+    esp_err_t err = bm8563_set_wake_alarm(interval);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "failed to arm RTC wake timer: %s", esp_err_to_name(err));
+        led_blink(LED_ERROR);
+        vTaskDelay(pdMS_TO_TICKS(60000));
+        esp_restart();
+    }
+    /* Battery hold released inside bm8563_set_wake_alarm */
 }
 
 /* ── Test mode loop ────────────────────────────────────────────────────── */
@@ -84,6 +109,10 @@ static void run_test_loop(void)
 
     if (wifi_connect() != ESP_OK) {
         ESP_LOGE(TAG, "WiFi failed");
+        led_blink(LED_ERROR);
+    }
+    if (camera_init(FB_COUNT_STREAM) != ESP_OK) {
+        ESP_LOGE(TAG, "camera init failed");
         led_blink(LED_ERROR);
     }
     http_server_start();
@@ -100,51 +129,42 @@ void app_main(void)
 {
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(bm8563_init());
-    ESP_ERROR_CHECK(camera_init());
     led_blink(LED_SLEEPING);
 
 #if CONFIG_M5CAM_TEST_MODE
     run_test_loop();
 #else
-    /* Connect WiFi, capture, post */
+    /* USB connected → stay awake (full UX). On battery → capture once + power off.
+     * Decided up front so the camera can be initialised with the right buffer
+     * count, and so the sensor never powers on during WiFi association. */
+    bool usb = usb_likely_connected();
+
     led_blink(LED_WIFI_CONNECTING);
     if (wifi_connect() != ESP_OK) {
         ESP_LOGE(TAG, "WiFi failed — skipping cycle");
         led_blink(LED_ERROR);
-        goto sleep;
+        enter_scheduled_sleep();
+        return;
+    }
+
+    /* Camera powers on only after WiFi is up (saves the association window). */
+    if (camera_init(usb ? FB_COUNT_STREAM : FB_COUNT_ONESHOT) != ESP_OK) {
+        ESP_LOGE(TAG, "camera init failed — skipping cycle");
+        led_blink(LED_ERROR);
+        enter_scheduled_sleep();
+        return;
     }
 
     capture_and_post("timer");
 
-    /* Read config from NVS (may have been updated by the POST response) */
-    int  interval = cam_config_get_interval();
-    bool sleep_en = cam_config_get_sleep_enabled();
-    bool usb      = usb_likely_connected();
-
-    ESP_LOGI(TAG, "interval=%dmin sleep_en=%d usb=%d",
-             interval, (int)sleep_en, (int)usb);
-
-    if (!sleep_en || usb) {
-        /* Stay awake: keep WiFi + HTTP server running, capture periodically */
-        run_awake_loop(interval);
+    /* Re-check USB after the POST (response may have changed the interval). */
+    if (usb_likely_connected()) {
+        /* Stay awake: keep WiFi + HTTP server running, capture periodically. */
+        run_awake_loop(cam_config_get_interval());
         /* run_awake_loop never returns */
     }
 
-    /* Normal production: brief HTTP server window then deep sleep */
-    http_server_start();
-    vTaskDelay(pdMS_TO_TICKS(5000));
-    http_server_stop();
-
-sleep:
-    ESP_LOGI(TAG, "entering deep sleep for %d minutes", cam_config_get_interval());
-    led_blink(LED_SLEEPING);
-    esp_err_t err = bm8563_set_wake_alarm(cam_config_get_interval());
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "failed to arm RTC wake timer: %s", esp_err_to_name(err));
-        led_blink(LED_ERROR);
-        vTaskDelay(pdMS_TO_TICKS(60000));
-        esp_restart();
-    }
-    /* Battery hold released inside bm8563_set_wake_alarm */
+    /* Battery: no live server window — go straight to power off. */
+    enter_scheduled_sleep();
 #endif
 }

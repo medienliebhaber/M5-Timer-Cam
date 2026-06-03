@@ -30,7 +30,6 @@ Response headers deliver pending runtime camera settings:
 
 ```text
 X-Config-Interval: 5
-X-Config-Sleep: 1
 X-Config-Framesize: UXGA
 X-Config-Quality: 12
 X-Config-Brightness: 0
@@ -82,7 +81,6 @@ server-side cached configuration when the camera is unavailable.
 ```json
 {
   "interval_minutes": 5,
-  "sleep_enabled": true,
   "framesize": "UXGA",
   "quality": 12,
   "brightness": 0,
@@ -105,7 +103,6 @@ immediately.
 ```json
 {
   "interval_minutes": 5,
-  "sleep_enabled": false,
   "contrast": 1,
   "quality": 10
 }

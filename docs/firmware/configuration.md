@@ -25,7 +25,6 @@ The camera persists runtime settings in NVS under the `m5cam` namespace.
 | Setting | NVS key | Description |
 |---------|---------|-------------|
 | Capture interval | `interval` | Minutes between scheduled captures |
-| Deep sleep | `sleep_en` | `1` to sleep between captures, `0` to stay awake |
 | Resolution | `framesize` | `VGA`, `SVGA`, `XGA`, `SXGA`, `UXGA`, or `QXGA` |
 | JPEG quality | `quality` | `0` to `63`; lower values produce higher quality |
 | Brightness | `brightness` | `-3` to `3` |

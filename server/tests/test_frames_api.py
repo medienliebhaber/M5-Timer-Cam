@@ -57,7 +57,6 @@ def test_ingest_frame_returns_queued_image_config_headers(tmp_data, monkeypatch)
     CameraConfigStore(tmp_data["data_dir"]).save(
         {
             "interval_minutes": 7,
-            "sleep_enabled": False,
             "framesize": "QXGA",
             "quality": 9,
             "brightness": -1,
@@ -74,7 +73,6 @@ def test_ingest_frame_returns_queued_image_config_headers(tmp_data, monkeypatch)
     response = client.post("/api/frames", content=SAMPLE_JPEG)
 
     assert response.headers["X-Config-Interval"] == "7"
-    assert response.headers["X-Config-Sleep"] == "0"
     assert response.headers["X-Config-Framesize"] == "QXGA"
     assert response.headers["X-Config-Quality"] == "9"
     assert response.headers["X-Config-Brightness"] == "-1"

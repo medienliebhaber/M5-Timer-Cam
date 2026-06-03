@@ -14,7 +14,6 @@ static const char *TAG = "http_client";
 
 #define NVS_NS      "m5cam"
 #define NVS_KEY_INT "interval"
-#define NVS_KEY_SLP "sleep_en"
 
 /* ── Response-header capture ───────────────────────────────────────────── */
 
@@ -22,7 +21,6 @@ static const char *TAG = "http_client";
  * Fields are zero-initialised; a non-empty string means the header arrived. */
 typedef struct {
     char interval[8];
-    char sleep[4];
     char framesize[8];
     char quality[4];
     char brightness[4];
@@ -42,7 +40,6 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
     const char *v = evt->header_value;
 
     if      (strcasecmp(k, "X-Config-Interval")   == 0) strlcpy(r->interval,   v, sizeof(r->interval));
-    else if (strcasecmp(k, "X-Config-Sleep")       == 0) strlcpy(r->sleep,      v, sizeof(r->sleep));
     else if (strcasecmp(k, "X-Config-Framesize")   == 0) strlcpy(r->framesize,  v, sizeof(r->framesize));
     else if (strcasecmp(k, "X-Config-Quality")     == 0) strlcpy(r->quality,    v, sizeof(r->quality));
     else if (strcasecmp(k, "X-Config-Brightness")  == 0) strlcpy(r->brightness, v, sizeof(r->brightness));
@@ -71,18 +68,6 @@ static void apply_nvs_int(const char *val, const char *key, int min, int max)
     ESP_LOGI(TAG, "config: %s=%d", key, v);
 }
 
-static void apply_nvs_bool(const char *val, const char *key)
-{
-    if (!val || !*val) return;
-    int32_t v = (*val == '1') ? 1 : 0;
-    nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) return;
-    nvs_set_i32(h, key, v);
-    nvs_commit(h);
-    nvs_close(h);
-    ESP_LOGI(TAG, "config: %s=%d", key, (int)v);
-}
-
 /* ── Apply response config ─────────────────────────────────────────────── */
 
 static void apply_resp_config(const resp_cfg_t *r)
@@ -93,7 +78,6 @@ static void apply_resp_config(const resp_cfg_t *r)
     }
 
     apply_nvs_int(r->interval, NVS_KEY_INT, 1, 1440);
-    apply_nvs_bool(r->sleep, NVS_KEY_SLP);
 
     if (!r->framesize[0]) return;  /* no image config headers → skip */
 

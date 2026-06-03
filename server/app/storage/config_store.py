@@ -3,7 +3,6 @@ from pathlib import Path
 
 _DEFAULT: dict = {
     "interval_minutes": 1,
-    "sleep_enabled": True,
     "framesize": "UXGA",
     "quality": 12,
     "brightness": 0,

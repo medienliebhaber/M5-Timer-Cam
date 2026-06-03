@@ -517,7 +517,6 @@ document.getElementById('btn-refresh-status').addEventListener('click', loadHwSt
 /* ── Camera config ─────────────────────────────────────────────────────── */
 const intervalSlider = document.getElementById('interval-slider');
 const intervalValue  = document.getElementById('interval-value');
-const sleepToggle    = document.getElementById('sleep-toggle');
 const configHint     = document.getElementById('config-push-hint');
 const previewImg     = document.getElementById('config-preview-img');
 const previewHint    = document.getElementById('config-preview-hint');
@@ -613,7 +612,6 @@ async function loadCameraConfig() {
     const mins = d.interval_minutes ?? 1;
     intervalSlider.value     = mins;
     intervalValue.textContent = `${mins} min`;
-    sleepToggle.checked      = d.sleep_enabled !== false;
     writeImageConfig(d);
     savedImageConfig = readImageConfig();
     previewDirty = false;
@@ -628,7 +626,6 @@ document.getElementById('btn-save-config').addEventListener('click', async () =>
   try {
     const body = {
       interval_minutes: parseInt(intervalSlider.value, 10),
-      sleep_enabled: sleepToggle.checked,
       ...readImageConfig(),
     };
     const r = await fetch('/api/camera/config', {

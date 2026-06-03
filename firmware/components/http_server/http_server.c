@@ -21,7 +21,6 @@ static httpd_handle_t s_server = NULL;
 #define OTA_BUF_SIZE  1024
 #define NVS_NS        "m5cam"
 #define NVS_KEY_INT   "interval"
-#define NVS_KEY_SLP   "sleep_en"
 
 /* ── NVS helpers ───────────────────────────────────────────────────────── */
 int cam_config_get_interval(void)
@@ -33,17 +32,6 @@ int cam_config_get_interval(void)
         nvs_close(h);
     }
     return (int)val;
-}
-
-bool cam_config_get_sleep_enabled(void)
-{
-    nvs_handle_t h;
-    int32_t val = 1;
-    if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
-        nvs_get_i32(h, NVS_KEY_SLP, &val);
-        nvs_close(h);
-    }
-    return val != 0;
 }
 
 static void cfg_write_i32(const char *key, int32_t val)
@@ -181,7 +169,6 @@ static bool image_config_update(cJSON *root, camera_image_config_t *config,
 static esp_err_t config_get_handler(httpd_req_t *req)
 {
     int  interval = cam_config_get_interval();
-    bool sleep_en = cam_config_get_sleep_enabled();
     camera_image_config_t image;
     if (camera_image_config_get(&image) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "camera config unavailable");
@@ -190,11 +177,11 @@ static esp_err_t config_get_handler(httpd_req_t *req)
 
     char buf[320];
     snprintf(buf, sizeof(buf),
-        "{\"interval_minutes\":%d,\"sleep_enabled\":%s,"
+        "{\"interval_minutes\":%d,"
         "\"framesize\":\"%s\",\"quality\":%d,\"brightness\":%d,"
         "\"contrast\":%d,\"saturation\":%d,\"sharpness\":%d,"
         "\"hmirror\":%s,\"vflip\":%s}",
-        interval, sleep_en ? "true" : "false", image.framesize,
+        interval, image.framesize,
         image.quality, image.brightness, image.contrast, image.saturation,
         image.sharpness, image.hmirror ? "true" : "false",
         image.vflip ? "true" : "false");
@@ -237,17 +224,6 @@ static esp_err_t config_post_handler(httpd_req_t *req)
         }
         interval = item->valueint;
     }
-    item = cJSON_GetObjectItemCaseSensitive(root, "sleep_enabled");
-    bool sleep_changed = item != NULL;
-    bool sleep_enabled = false;
-    if (item) {
-        if (!cJSON_IsBool(item)) {
-            cJSON_Delete(root);
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid sleep flag");
-            return ESP_FAIL;
-        }
-        sleep_enabled = cJSON_IsTrue(item);
-    }
 
     camera_image_config_t image;
     camera_image_config_get(&image);
@@ -259,7 +235,6 @@ static esp_err_t config_post_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
     if (interval_changed) cfg_write_i32(NVS_KEY_INT, interval);
-    if (sleep_changed) cfg_write_i32(NVS_KEY_SLP, sleep_enabled ? 1 : 0);
     cJSON_Delete(root);
 
     httpd_resp_set_type(req, "application/json");
